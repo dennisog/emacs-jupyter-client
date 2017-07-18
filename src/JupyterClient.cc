@@ -42,14 +42,16 @@ bool BBSocket::send(raw_message data) {
   return sock_.send(msg);
 }
 // receive a full multipart message
-raw_message BBSocket::recv_multipart() {
-  raw_message out;
+std::vector<raw_message> BBSocket::recv_multipart() {
+  std::vector<raw_message> out;
   zmq::message_t msg;
   bool more = true;
   while (more) {
     sock_.recv(&msg);
+    raw_message tmp;
     auto msg_data = static_cast<char *>(msg.data());
-    out.insert(end(out), msg_data, msg_data + msg.size());
+    tmp.insert(end(tmp), msg_data, msg_data + msg.size());
+    out.push_back(tmp);
     more = [this] {
       int64_t sz_inout = 0;
       size_t len = sizeof(sz_inout);
@@ -64,7 +66,7 @@ raw_message BBSocket::recv_multipart() {
 // A communication channel to the Jupyter kernel
 //
 Channel::Channel(zmq::context_t &ctx, int flags,
-                 std::function<void(raw_message)> rx_handler)
+                 std::function<void(std::vector<raw_message>)> rx_handler)
     : rx_handler_(rx_handler), sock_(ctx, flags), running_(false) {}
 
 void Channel::connect(std::string const &endpoint) { sock_.connect(endpoint); }
@@ -94,8 +96,8 @@ void Channel::run() {
       std::lock_guard<std::mutex> lock(sockmtx_);
       // FIXME hardcoded polling timeout
       if (sock_.pollin(10)) {
-        auto buf = sock_.recv_multipart();
-        rx_handler_(buf);
+        auto msgs = sock_.recv_multipart();
+        rx_handler_(msgs);
       }
     }
   }
@@ -146,7 +148,7 @@ void HBChannel::start() {
 }
 
 // debug dummy handler
-void print_message_received(raw_message msgs) {
+void print_message_received(std::vector<raw_message> msgs) {
   std::cerr << "Message received." << std::endl;
 }
 

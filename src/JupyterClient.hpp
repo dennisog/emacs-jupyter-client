@@ -39,7 +39,7 @@ public:
   bool pollout(long timeout);
   // blocking i/o
   bool send(raw_message data);
-  raw_message recv_multipart();
+  std::vector<raw_message> recv_multipart();
 
 private:
   bool poll_(int flags, long timeout);
@@ -53,7 +53,7 @@ private:
 class Channel {
 public:
   Channel(zmq::context_t &ctx, int flags,
-          std::function<void(raw_message)> rx_handler);
+          std::function<void(std::vector<raw_message>)> rx_handler);
   void connect(std::string const &endpoint);
   bool send(raw_message data);
   bool running();
@@ -62,7 +62,7 @@ public:
 
 protected:
   // each channel needs a handler which process received messages
-  std::function<void(raw_message)> rx_handler_;
+  std::function<void(std::vector<raw_message>)> rx_handler_;
   // communication
   BBSocket sock_;
   // threading
