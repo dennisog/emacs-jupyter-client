@@ -58,7 +58,7 @@ public:
   void start();
   void stop();
 
-private:
+protected:
   // each channel needs a handler which process received messages
   std::function<void(raw_message)> rx_handler_;
   // communication
@@ -68,6 +68,20 @@ private:
   void run();
   std::mutex sockmtx_, loopmtx_;
   std::thread rx_thread_;
+};
+
+// a heartbeat channel is only slightly different from a regular channel. the
+// timeout is given in milliseconds.
+class HBChannel : public Channel {
+public:
+  HBChannel(zmq::context_t &ctx, int flags, long timeout,
+            std::function<void(bool)> notify_manager);
+  void run();
+
+private:
+  long timeout_;
+  const raw_message ping_ = {'p', 'i', 'n', 'g'};
+  std::function<void(bool)> notify_manager_;
 };
 
 // https://jupyter-client.readthedocs.io/en/latest/kernels.html#kernelspecs
@@ -111,22 +125,27 @@ private:
   Channel control_chan_;
   Channel shell_chan_;
   Channel stdin_chan_;
-  Channel hb_chan_;
+  HBChannel hb_chan_;
   Channel iopub_chan_;
 
   // interpret a connection file
   const ConnectionParams parse_connection_file_(std::string const &fn);
+
+  // heartbeat
+  std::mutex hbmtx_;
+  bool alive_;
 };
 
 class JupyterClient {
 public:
   JupyterClient(KernelSpec const &kspec, std::string const &connection_file);
-  static void del(void *client);
+  static void del(void *client) noexcept;
 
   //
   // connection-related
   //
   void connect();
+  bool alive();
 
 private:
   // Info about the kernel

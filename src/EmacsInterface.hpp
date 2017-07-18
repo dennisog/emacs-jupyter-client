@@ -23,10 +23,13 @@ extern "C" {
 extern "C" {
 // connect to a kernel and return a pointer to a JupyterClient
 emacs_value ejc_connect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
-                        void *data);
+                        void *data) noexcept;
 // disconnect and destroy
 emacs_value ejc_disconnect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
-                           void *data);
+                           void *data) noexcept;
+// is the kernel alive?
+emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
+                             emacs_value args[], void *data) noexcept;
 } // extern "C"
 
 //

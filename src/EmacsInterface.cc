@@ -13,7 +13,7 @@ int plugin_is_GPL_compatible;
 
 // A debug function which does nothing but give us the answer to everything.
 extern "C" emacs_value get_42(emacs_env *env, ptrdiff_t nargs,
-                              emacs_value args[], void *data) {
+                              emacs_value args[], void *data) noexcept {
   return env->make_integer(env, 42);
 }
 
@@ -23,7 +23,7 @@ extern "C" emacs_value get_42(emacs_env *env, ptrdiff_t nargs,
 extern "C" {
 // create and connect
 emacs_value ejc_connect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
-                        void *data) {
+                        void *data) noexcept {
   if (env->vec_size(env, args[0]) != 3) {
     return ejc::nil(env);
   }
@@ -42,11 +42,22 @@ emacs_value ejc_connect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
 
 // disconnect and destroy
 emacs_value ejc_disconnect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
-                           void *data) {
+                           void *data) noexcept {
   try {
-    auto conn = ejc::get_client(env, args[0]);
-    delete conn;
+    auto client = ejc::get_client(env, args[0]);
+    delete client;
     return ejc::t(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+// is the kernel alive?
+emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
+                             emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    return client->alive() ? ejc::t(env) : ejc::nil(env);
   } catch (std::exception &e) {
     return env->make_string(env, e.what(), std::strlen(e.what()));
   }
@@ -115,6 +126,14 @@ int emacs_module_init(struct emacs_runtime *ert) {
                                    "Returns `t' if destruction was successful, "
                                    "otherwise returns string containing the "
                                    "exception message.",
+                                   NULL));
+
+  // is the kernel alive?
+  bind_function(env, "ejc/alive?",
+                env->make_function(env, 1, 1, ejc_kernel_alive,
+                                   "(ejc/alive? CLIENT-PTR)\n\n"
+                                   "Is the client CLIENT-PTR alive?.\n\n"
+                                   "Returns `t' if yes, `nil' if no.",
                                    NULL));
 
   //
