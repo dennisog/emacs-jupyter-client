@@ -11,6 +11,7 @@
 #include <json/json.h>
 #include <zmq.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -32,6 +33,7 @@ public:
   // housekeeping
   BBSocket(zmq::context_t &ctx, int flags);
   void connect(std::string const &endpoint);
+  void bind(std::string const &endpoint);
   // polling
   bool pollin(long timeout);
   bool pollout(long timeout);
@@ -70,16 +72,21 @@ protected:
   std::thread rx_thread_;
 };
 
-// a heartbeat channel is only slightly different from a regular channel. the
-// timeout is given in milliseconds.
+// a heartbeat channel is only slightly different from a regular channel. It
+// runs in a loop an randomly pings the kernel. If the kernel fails to respond
+// withing timeout milliseconds, we call the notify_manager function with
+// 'false' as argument.
 class HBChannel : public Channel {
 public:
-  HBChannel(zmq::context_t &ctx, int flags, long timeout,
+  HBChannel(zmq::context_t &ctx, int flags, std::chrono::milliseconds timeout,
+            std::chrono::milliseconds interval,
             std::function<void(bool)> notify_manager);
-  void run();
+  void start();
 
 private:
-  long timeout_;
+  void run_heartbeat_();
+  std::chrono::milliseconds timeout_;
+  std::chrono::milliseconds interval_;
   const raw_message ping_ = {'p', 'i', 'n', 'g'};
   std::function<void(bool)> notify_manager_;
 };
@@ -94,12 +101,28 @@ struct KernelSpec {
       : argv_(argv), display_name_(display_name), language_(language) {}
 };
 
+// wire format parameters
+struct ConnectionParams {
+  boost::asio::ip::address_v4 ip;
+  std::string key;
+  std::string transport;
+  unsigned int control_port;
+  unsigned int shell_port;
+  unsigned int stdin_port;
+  unsigned int hb_port;
+  unsigned int iopub_port;
+  enum class SignatureScheme { HMAC_SHA256 };
+  SignatureScheme signature_scheme;
+};
+
 class KernelManager {
 public:
   KernelManager(std::string const &connection_file, unsigned int nthreads = 1);
 
   void connect();
   bool is_alive();
+  // interpret a connection file
+  static const ConnectionParams parse_connection_file_(std::string const &fn);
 
 private:
   //
@@ -107,19 +130,6 @@ private:
   //
   std::string connection_file_name_;
   zmq::context_t ctx_;
-  // wire format parameters
-  struct ConnectionParams {
-    boost::asio::ip::address_v4 ip;
-    std::string key;
-    std::string transport;
-    unsigned int control_port;
-    unsigned int shell_port;
-    unsigned int stdin_port;
-    unsigned int hb_port;
-    unsigned int iopub_port;
-    enum class SignatureScheme { HMAC_SHA256 };
-    SignatureScheme signature_scheme;
-  };
   ConnectionParams cparams_;
   // channels
   Channel control_chan_;
@@ -127,9 +137,6 @@ private:
   Channel stdin_chan_;
   HBChannel hb_chan_;
   Channel iopub_chan_;
-
-  // interpret a connection file
-  const ConnectionParams parse_connection_file_(std::string const &fn);
 
   // heartbeat
   std::mutex hbmtx_;

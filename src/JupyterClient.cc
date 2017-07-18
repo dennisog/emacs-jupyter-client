@@ -7,6 +7,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <random>
 
 namespace ejc {
 
@@ -19,13 +20,19 @@ BBSocket::BBSocket(zmq::context_t &ctx, int flags)
                              .events = ZMQ_POLLIN | ZMQ_POLLOUT,
                              .revents = 0} {}
 void BBSocket::connect(std::string const &endpoint) { sock_.connect(endpoint); }
+void BBSocket::bind(std::string const &endpoint) { sock_.bind(endpoint); }
 
 // polling
 bool BBSocket::pollin(long timeout) { return poll_(ZMQ_POLLIN, timeout); }
 bool BBSocket::pollout(long timeout) { return poll_(ZMQ_POLLOUT, timeout); }
 bool BBSocket::poll_(int flags, long timeout) {
+  pi_.events = flags;
   auto ret = zmq::poll(&pi_, 1, timeout);
-  return ret == 0 ? false : true;
+  if (ret != 0) {
+    return (pi_.revents & flags) == flags ? true : false;
+  } else {
+    return false;
+  }
 }
 
 // blocking i/o
@@ -44,8 +51,8 @@ raw_message BBSocket::recv_multipart() {
     auto msg_data = static_cast<char *>(msg.data());
     out.insert(end(out), msg_data, msg_data + msg.size());
     more = [this] {
-      int sz_inout = 0;
-      size_t len = 1;
+      int64_t sz_inout = 0;
+      size_t len = sizeof(sz_inout);
       sock_.getsockopt(ZMQ_RCVMORE, &sz_inout, &len);
       return sz_inout == 0 ? false : true;
     }();
@@ -95,31 +102,50 @@ void Channel::run() {
 }
 
 // a heartbeat channel is only slightly different from a regular channel
-HBChannel::HBChannel(zmq::context_t &ctx, int flags, long timeout,
+HBChannel::HBChannel(zmq::context_t &ctx, int flags,
+                     std::chrono::milliseconds timeout,
+                     std::chrono::milliseconds interval,
                      std::function<void(bool)> notify_manager)
     : Channel(ctx, flags, [](auto a) {}), timeout_(timeout),
-      notify_manager_(notify_manager) {}
+      interval_(interval), notify_manager_(notify_manager) {}
+
 // send a 'ping' to the kernel, wait for a response and timeout if no response.
-void HBChannel::run() {
+void HBChannel::run_heartbeat_() {
+  using namespace std::chrono;
+  std::mt19937 mt(system_clock::now().time_since_epoch().count());
+  std::uniform_real_distribution<> r(0, 1);
+  auto rand = [&mt, &r] { return r(mt); };
+
   while (true) {
     if (!running()) {
       break;
     } else {
+      auto start = system_clock::now();
       sock_.send(ping_);
       {
         std::lock_guard<std::mutex> lock(sockmtx_);
-        if (sock_.pollin(timeout_)) {
+        if (sock_.pollin(timeout_.count())) {
           auto buf = sock_.recv_multipart();
           notify_manager_(true);
         } else {
           notify_manager_(false);
         }
       }
+      auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
+      auto sleepfor = rand() * (interval_ - elapsed);
+      std::this_thread::sleep_for(sleepfor);
     }
   }
 }
 
-// debug
+void HBChannel::start() {
+  if (!running()) {
+    running_ = true;
+    rx_thread_ = std::thread([this] { run_heartbeat_(); });
+  }
+}
+
+// debug dummy handler
 void print_message_received(raw_message msgs) {
   std::cerr << "Message received." << std::endl;
 }
@@ -131,21 +157,22 @@ KernelManager::KernelManager(std::string const &connection_file,
       control_chan_(ctx_, ZMQ_DEALER, print_message_received),
       shell_chan_(ctx_, ZMQ_DEALER, print_message_received),
       stdin_chan_(ctx_, ZMQ_DEALER, print_message_received),
-      // FIXME hardcoded 100ms timeout
-      hb_chan_(ctx_, ZMQ_DEALER, 100,
+      // FIXME timeout and interval values are hardcoded rn
+      hb_chan_(ctx_, ZMQ_DEALER, std::chrono::milliseconds(100),
+               std::chrono::milliseconds(2500),
                [this](auto a) {
                  std::lock_guard<std::mutex> lock(hbmtx_);
                  alive_ = a;
                }),
-      iopub_chan_(ctx_, ZMQ_PUB, print_message_received), alive_() {}
+      iopub_chan_(ctx_, ZMQ_PUB, print_message_received), alive_(false) {}
 
-const KernelManager::ConnectionParams
+const ConnectionParams
 KernelManager::parse_connection_file_(std::string const &fn) {
   Json::Value dict;
   std::ifstream infile(fn);
   infile >> dict;
   infile.close();
-  return KernelManager::ConnectionParams(
+  return ConnectionParams(
       {.ip = boost::asio::ip::address_v4::from_string(dict["ip"].asString()),
        .key = dict["key"].asString(),
        .transport = dict["transport"].asString(),
@@ -204,10 +231,6 @@ void KernelManager::connect() {
   if (i <= 0) {
     throw std::runtime_error("Connection failure.");
   }
-  if (is_alive()) {
-    return;
-  }
-  throw std::runtime_error("Connection failure.");
 }
 
 JupyterClient::JupyterClient(KernelSpec const &kspec,

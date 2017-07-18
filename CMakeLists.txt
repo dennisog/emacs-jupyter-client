@@ -44,7 +44,6 @@ message(STATUS "Using Emacs source directory " ${EMACS_SRC_DIR})
 ########################################################################
 # Include paths
 ########################################################################
-
 include_directories(
   ${EMACS_SRC_DIR}/src
   ${ZEROMQ_INCLUDE_DIRS}
@@ -56,3 +55,4 @@ include_directories(
 ########################################################################
 add_subdirectory(src)
 add_subdirectory(lisp)
+add_subdirectory(test)
