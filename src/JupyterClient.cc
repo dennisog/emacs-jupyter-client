@@ -6,56 +6,108 @@
 #include "JupyterClient.hpp"
 
 #include <fstream>
+#include <iostream>
 
 namespace ejc {
 
 //
-// Simple 0MQ poller implementation
+// A convenience wrapper around the 0MQ socket
 //
+BBSocket::BBSocket(zmq::context_t &ctx, int flags)
+    : sock_(ctx, flags), pi_{.socket = static_cast<void *>(sock_),
+                             .fd = 0,
+                             .events = ZMQ_POLLIN | ZMQ_POLLOUT,
+                             .revents = 0} {}
+void BBSocket::connect(std::string const &endpoint) { sock_.connect(endpoint); }
 
-void Poller::add(zmq::socket_t &sock, short events) {
-  if (_tbl.find(static_cast<void *>(sock)) != end(_tbl))
-    return;
-  _pi.push_back({.socket = static_cast<void *>(sock),
-                 .fd = 0,
-                 .events = events,
-                 .revents = 0});
-  _tbl.emplace(static_cast<void *>(sock),
-               std::make_pair(_pi.size() - 1, events));
+// polling
+bool BBSocket::poll_(int flags, long timeout) {
+  auto ret = zmq::poll(&pi_, 1, timeout);
+  return ret == 0 ? false : true;
+}
+bool BBSocket::pollin(long timeout) { return poll_(ZMQ_POLLIN, timeout); }
+bool BBSocket::pollout(long timeout) { return poll_(ZMQ_POLLOUT, timeout); }
+
+// blocking i/o
+bool BBSocket::send(raw_message data) {
+  zmq::message_t msg(data.size());
+  memcpy(msg.data(), data.data(), data.size());
+  return sock_.send(msg);
+}
+// receive a full multipart message
+raw_message BBSocket::recv_multipart() {
+  raw_message out;
+  zmq::message_t msg;
+  bool more = true;
+  while (more) {
+    sock_.recv(&msg);
+    auto msg_data = static_cast<char *>(msg.data());
+    out.insert(end(out), msg_data, msg_data + msg.size());
+    more = [this] {
+      int sz_inout = 0;
+      size_t len = 1;
+      sock_.getsockopt(ZMQ_RCVMORE, &sz_inout, &len);
+      return sz_inout == 0 ? false : true;
+    }();
+  }
+  return out;
 }
 
-void Poller::remove(zmq::socket_t &sock) {
-  auto s = _tbl.find(static_cast<void *>(sock));
-  if (s == end(_tbl))
-    return;
-  _pi.erase(begin(_pi) + s->second.first);
-  _tbl.clear();
-  for (size_t i = 0; i < _pi.size(); ++i) {
-    _tbl.emplace(_pi[i].socket, std::make_pair(i, _pi[i].events));
+//
+// A communication channel to the Jupyter kernel
+//
+Channel::Channel(zmq::context_t &ctx, int flags,
+                 std::function<void(raw_message)> rx_handler)
+    : rx_handler_(rx_handler), sock_(ctx, flags), running_(false) {}
+
+void Channel::connect(std::string const &endpoint) { sock_.connect(endpoint); }
+
+bool Channel::send(raw_message data) {
+  std::lock_guard<std::mutex> lock(sockmtx_);
+  return sock_.send(data);
+}
+
+bool Channel::running() {
+  std::lock_guard<std::mutex> lock(loopmtx_);
+  return running_;
+}
+
+void Channel::start() {
+  if (!running()) {
+    running_ = true;
+    rx_thread_ = std::thread([this] { run(); });
   }
 }
 
-int Poller::poll(long timeout) {
-  return zmq::poll(_pi.data(), _pi.size(), timeout);
+void Channel::run() {
+  while (true) {
+    if (!running()) {
+      break;
+    } else {
+      std::lock_guard<std::mutex> lock(sockmtx_);
+      // FIXME hardcoded polling timeout
+      if (sock_.pollin(10)) {
+        auto buf = sock_.recv_multipart();
+        rx_handler_(buf);
+      }
+    }
+  }
 }
 
-bool Poller::check_for(zmq::socket_t &sock, short event) {
-  return _pi[_tbl[static_cast<void *>(sock)].first].revents == event ? true
-                                                                     : false;
-}
-
-bool Poller::check(zmq::socket_t &sock) {
-  auto p = _tbl[static_cast<void *>(sock)];
-  return _pi[p.first].revents == p.second ? true : false;
+// debug
+void print_message_received(raw_message msgs) {
+  std::cerr << "Message received." << std::endl;
 }
 
 KernelManager::KernelManager(std::string const &connection_file,
                              unsigned int nthreads)
     : connection_file_name_(connection_file), ctx_(zmq::context_t(nthreads)),
       cparams_(parse_connection_file_(connection_file)),
-      control_sock_(ctx_, ZMQ_DEALER), shell_sock_(ctx_, ZMQ_DEALER),
-      stdin_sock_(ctx_, ZMQ_DEALER), hb_sock_(ctx_, ZMQ_DEALER),
-      iopub_sock_(ctx_, ZMQ_PUB) {}
+      control_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      shell_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      stdin_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      hb_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      iopub_chan_(ctx_, ZMQ_PUB, print_message_received) {}
 
 const KernelManager::ConnectionParams
 KernelManager::parse_connection_file_(std::string const &fn) {
@@ -83,67 +135,28 @@ KernelManager::parse_connection_file_(std::string const &fn) {
 }
 
 // send a heartbeat, wait for receipt
-bool KernelManager::is_alive() {
-  std::string ping("ping");
-  zmq::message_t out(ping.length());
-  zmq::message_t in;
-  memcpy(out.data(), ping.data(), ping.length());
-  poll_.poll(5);
-  int i = 5;
-  for (; i > 0; --i) {
-    if (poll_.check_for(control_sock_, ZMQ_POLLOUT))
-      break;
-    poll_.poll(10);
-  }
-  if (i < 0)
-    return false;
-  control_sock_.send(out);
-  // wait for rx
-  poll_.poll(5);
-  i = 5;
-  for (; i > 0; --i) {
-    if (poll_.check_for(control_sock_, ZMQ_POLLIN))
-      break;
-    poll_.poll(10);
-  }
-  if (i < 0)
-    return false;
-  control_sock_.recv(&in);
-  ;
-  if (in.size() != ping.length()) {
-    return false;
-  } else {
-    std::string p2;
-    p2.assign(static_cast<char *>(in.data()), in.size());
-    return p2.compare(ping);
-  }
-} // this is the worst I have written i am tired now
+bool KernelManager::is_alive() { return true; }
 
 void KernelManager::connect() {
   using boost::format;
-  int i = 5; // number of tries
+  int i = 5; // number of tries FIXME hardcoded
   for (; i > 0; --i) {
     try {
-      control_sock_.connect((format("%s://%s:%d") % cparams_.transport %
+      control_chan_.connect((format("%s://%s:%d") % cparams_.transport %
                              cparams_.ip.to_string() % cparams_.control_port)
                                 .str());
-      shell_sock_.connect((format("%s://%s:%d") % cparams_.transport %
+      shell_chan_.connect((format("%s://%s:%d") % cparams_.transport %
                            cparams_.ip.to_string() % cparams_.shell_port)
                               .str());
-      stdin_sock_.connect((format("%s://%s:%d") % cparams_.transport %
+      stdin_chan_.connect((format("%s://%s:%d") % cparams_.transport %
                            cparams_.ip.to_string() % cparams_.stdin_port)
                               .str());
-      hb_sock_.connect((format("%s://%s:%d") % cparams_.transport %
+      hb_chan_.connect((format("%s://%s:%d") % cparams_.transport %
                         cparams_.ip.to_string() % cparams_.hb_port)
                            .str());
-      iopub_sock_.connect((format("%s://%s:%d") % cparams_.transport %
+      iopub_chan_.connect((format("%s://%s:%d") % cparams_.transport %
                            cparams_.ip.to_string() % cparams_.iopub_port)
                               .str());
-      poll_.add(control_sock_, ZMQ_POLLOUT | ZMQ_POLLIN);
-      poll_.add(shell_sock_, ZMQ_POLLOUT | ZMQ_POLLIN);
-      poll_.add(stdin_sock_, ZMQ_POLLOUT | ZMQ_POLLIN);
-      poll_.add(hb_sock_, ZMQ_POLLOUT | ZMQ_POLLIN);
-      poll_.add(iopub_sock_, ZMQ_POLLIN);
       break;
     } catch (std::exception &ex) {
       ;

@@ -11,28 +11,63 @@
 #include <json/json.h>
 #include <zmq.hpp>
 
+#include <cstdint>
 #include <exception>
+#include <functional>
+#include <mutex>
 #include <string>
-#include <unordered_map>
+#include <thread>
 #include <vector>
 
 namespace ejc {
 
+// there are better ways of abstracting buffers, but this works for now
+typedef std::vector<uint8_t> raw_message;
+
 //
-// 0MQ Polling
+// A convenience wrapper around the 0MQ socket
 //
-class Poller {
+class BBSocket {
 public:
-  Poller(){};
-  void add(zmq::socket_t &sock, short events);
-  void remove(zmq::socket_t &sock); // costly
-  int poll(long timeout);
-  bool check_for(zmq::socket_t &sock, short event);
-  bool check(zmq::socket_t &sock);
+  // housekeeping
+  BBSocket(zmq::context_t &ctx, int flags);
+  void connect(std::string const &endpoint);
+  // polling
+  bool pollin(long timeout);
+  bool pollout(long timeout);
+  // blocking i/o
+  bool send(raw_message data);
+  raw_message recv_multipart();
 
 private:
-  std::vector<zmq::pollitem_t> _pi;
-  std::unordered_map<void *, std::pair<short, short>> _tbl;
+  bool poll_(int flags, long timeout);
+  zmq::socket_t sock_;
+  zmq::pollitem_t pi_;
+};
+
+//
+// A communication channel to the Jupyter kernel
+//
+class Channel {
+public:
+  Channel(zmq::context_t &ctx, int flags,
+          std::function<void(raw_message)> rx_handler);
+  void connect(std::string const &endpoint);
+  bool send(raw_message data);
+  bool running();
+  void start();
+  void stop();
+
+private:
+  // each channel needs a handler which process received messages
+  std::function<void(raw_message)> rx_handler_;
+  // communication
+  BBSocket sock_;
+  // threading
+  bool running_;
+  void run();
+  std::mutex sockmtx_, loopmtx_;
+  std::thread rx_thread_;
 };
 
 // https://jupyter-client.readthedocs.io/en/latest/kernels.html#kernelspecs
@@ -58,13 +93,6 @@ private:
   //
   std::string connection_file_name_;
   zmq::context_t ctx_;
-  zmq::socket_t control_sock_;
-  zmq::socket_t shell_sock_;
-  zmq::socket_t stdin_sock_;
-  zmq::socket_t hb_sock_;
-  zmq::socket_t iopub_sock_;
-  Poller poll_;
-
   // wire format parameters
   struct ConnectionParams {
     boost::asio::ip::address_v4 ip;
@@ -79,6 +107,12 @@ private:
     SignatureScheme signature_scheme;
   };
   ConnectionParams cparams_;
+  // channels
+  Channel control_chan_;
+  Channel shell_chan_;
+  Channel stdin_chan_;
+  Channel hb_chan_;
+  Channel iopub_chan_;
 
   // interpret a connection file
   const ConnectionParams parse_connection_file_(std::string const &fn);
