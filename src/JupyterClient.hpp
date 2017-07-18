@@ -6,14 +6,34 @@
 #ifndef e067987744dae1b61d9d4099702a42c702346337
 #define e067987744dae1b61d9d4099702a42c702346337
 
+#include <boost/asio.hpp>
+#include <boost/format.hpp>
 #include <json/json.h>
 #include <zmq.hpp>
 
 #include <exception>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ejc {
+
+//
+// 0MQ Polling
+//
+class Poller {
+public:
+  Poller(){};
+  void add(zmq::socket_t &sock, short events);
+  void remove(zmq::socket_t &sock); // costly
+  int poll(long timeout);
+  bool check_for(zmq::socket_t &sock, short event);
+  bool check(zmq::socket_t &sock);
+
+private:
+  std::vector<zmq::pollitem_t> _pi;
+  std::unordered_map<void *, std::pair<short, short>> _tbl;
+};
 
 // https://jupyter-client.readthedocs.io/en/latest/kernels.html#kernelspecs
 struct KernelSpec {
@@ -30,6 +50,7 @@ public:
   KernelManager(std::string const &connection_file, unsigned int nthreads = 1);
 
   void connect();
+  bool is_alive();
 
 private:
   //
@@ -37,9 +58,30 @@ private:
   //
   std::string connection_file_name_;
   zmq::context_t ctx_;
+  zmq::socket_t control_sock_;
+  zmq::socket_t shell_sock_;
+  zmq::socket_t stdin_sock_;
+  zmq::socket_t hb_sock_;
+  zmq::socket_t iopub_sock_;
+  Poller poll_;
 
-  // interpret a connection file and save some methods
-  void parse_connection_file_();
+  // wire format parameters
+  struct ConnectionParams {
+    boost::asio::ip::address_v4 ip;
+    std::string key;
+    std::string transport;
+    unsigned int control_port;
+    unsigned int shell_port;
+    unsigned int stdin_port;
+    unsigned int hb_port;
+    unsigned int iopub_port;
+    enum class SignatureScheme { HMAC_SHA256 };
+    SignatureScheme signature_scheme;
+  };
+  ConnectionParams cparams_;
+
+  // interpret a connection file
+  const ConnectionParams parse_connection_file_(std::string const &fn);
 };
 
 class JupyterClient {
