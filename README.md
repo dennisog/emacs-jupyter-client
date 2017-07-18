@@ -1,0 +1,3 @@
+# emacs-jupyter-client
+
+a lot of work in progress...
