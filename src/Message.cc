@@ -58,18 +58,17 @@ ExecuteRequest::ExecuteRequest(std::string const &code, bool silent,
 
 raw_message ExecuteRequest::serialize() {
   Json::Value val;
-
+  Json::Value uexpr;
   val["code"] = code;
   val["silent"] = silent;
   val["store_history"] = store_history;
   val["allow_stdin"] = allow_stdin;
   val["stop_on_error"] = stop_on_error;
   if (user_expressions != nullptr) {
-    Json::Value uexpr;
     for (auto &e : *user_expressions)
       uexpr[e.first] = e.second;
-    val["user_expressions"] = uexpr;
   }
+  val["user_expressions"] = uexpr;
   auto str = json2string(val);
   raw_message out;
   out.insert(begin(out), str.data(), str.data() + str.length());
