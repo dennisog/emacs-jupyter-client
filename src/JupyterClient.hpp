@@ -6,6 +6,9 @@
 #ifndef e067987744dae1b61d9d4099702a42c702346337
 #define e067987744dae1b61d9d4099702a42c702346337
 
+#include "Crypto.hpp"
+#include "Message.hpp"
+
 #include <boost/asio.hpp>
 #include <boost/format.hpp>
 #include <json/json.h>
@@ -23,7 +26,9 @@
 namespace ejc {
 
 // there are better ways of abstracting buffers, but this works for now
-typedef std::vector<uint8_t> raw_message;
+// TODO, switch to asio::mutable buffers to avoid memcpy when sending zmq
+// messages.
+using msg::raw_message;
 
 //
 // A convenience wrapper around the 0MQ socket
@@ -38,7 +43,8 @@ public:
   bool pollin(long timeout);
   bool pollout(long timeout);
   // blocking i/o
-  bool send(raw_message data);
+  bool send(raw_message &data);
+  void send_multipart(std::vector<raw_message> &data);
   std::vector<raw_message> recv_multipart();
 
 private:
@@ -55,7 +61,8 @@ public:
   Channel(zmq::context_t &ctx, int flags,
           std::function<void(std::vector<raw_message>)> rx_handler);
   void connect(std::string const &endpoint);
-  bool send(raw_message data);
+  bool send(raw_message &data);
+  void send_multipart(std::vector<raw_message> &data);
   bool running();
   void start();
   void stop();
@@ -87,7 +94,7 @@ private:
   void run_heartbeat_();
   std::chrono::milliseconds timeout_;
   std::chrono::milliseconds interval_;
-  const raw_message ping_ = {'p', 'i', 'n', 'g'};
+  raw_message ping_ = {'p', 'i', 'n', 'g'};
   std::function<void(bool)> notify_manager_;
 };
 
@@ -121,6 +128,13 @@ public:
 
   void connect();
   bool is_alive();
+  std::string key() { return cparams_.key; }
+
+  Channel &control() { return control_chan_; };
+  Channel &shell() { return shell_chan_; };
+  Channel &stdin() { return stdin_chan_; };
+  Channel &heartbeat() { return hb_chan_; };
+  Channel &iopub() { return iopub_chan_; };
   // interpret a connection file
   static const ConnectionParams parse_connection_file_(std::string const &fn);
 
@@ -153,12 +167,36 @@ public:
   //
   void connect();
   bool alive();
+  boost::uuids::uuid sessionid_;
+
+  //
+  // client-related
+  //
+
+  // send an execute request to the kernel. returns the msg_id of the message
+  // created.
+  const std::string execute_code(std::string const &code, bool silent = false,
+                                 bool store_history = false,
+                                 bool allow_stdin = true,
+                                 bool stop_on_error = true);
+  const std::string execute_user_expr(msg::usr_exprs user_expressions,
+                                      bool silent = false,
+                                      bool store_history = false,
+                                      bool allow_stdin = true,
+                                      bool stop_on_error = true);
 
 private:
   // Info about the kernel
   KernelSpec kspec_;
   // The connection to the kernel
   KernelManager km_;
+  // we need to sign and auth messages
+  crypto::HMAC_SHA256 hmac_;
+
+  // serialize a message to a buffer of multipart message parts
+  std::vector<raw_message> serialize_(msg::Message::uptr);
+  // get the signature of a block of messages
+  raw_message sign_(std::vector<raw_message> data);
 };
 
 } // namespace ejc

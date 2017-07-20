@@ -36,10 +36,22 @@ bool BBSocket::poll_(int flags, long timeout) {
 }
 
 // blocking i/o
-bool BBSocket::send(raw_message data) {
-  zmq::message_t msg(data.size());
-  memcpy(msg.data(), data.data(), data.size());
+bool BBSocket::send(raw_message &data) {
+  zmq::message_t msg(data.data(), data.size(), NULL);
   return sock_.send(msg);
+}
+void BBSocket::send_multipart(std::vector<raw_message> &data) {
+  // definitely not the most efficient way of doing this...
+  zmq::message_t msg;
+  for (size_t i = 0; i < data.size(); ++i) {
+    auto &buf = data[i];
+    msg.rebuild(buf.data(), buf.size(), NULL);
+    if (i == data.size() - 1) {
+      sock_.send(msg, 0);
+    } else {
+      sock_.send(msg, ZMQ_SNDMORE);
+    }
+  }
 }
 // receive a full multipart message
 std::vector<raw_message> BBSocket::recv_multipart() {
@@ -71,9 +83,14 @@ Channel::Channel(zmq::context_t &ctx, int flags,
 
 void Channel::connect(std::string const &endpoint) { sock_.connect(endpoint); }
 
-bool Channel::send(raw_message data) {
+bool Channel::send(raw_message &data) {
   std::lock_guard<std::mutex> lock(sockmtx_);
   return sock_.send(data);
+}
+
+void Channel::send_multipart(std::vector<raw_message> &data) {
+  std::lock_guard<std::mutex> lock(sockmtx_);
+  return sock_.send_multipart(data);
 }
 
 bool Channel::running() {
@@ -227,6 +244,7 @@ void KernelManager::connect() {
       iopub_chan_.start();
       break;
     } catch (std::exception &ex) {
+      // FIXME
       ;
     }
   }
@@ -237,7 +255,8 @@ void KernelManager::connect() {
 
 JupyterClient::JupyterClient(KernelSpec const &kspec,
                              std::string const &connection_file)
-    : kspec_(kspec), km_(connection_file) {}
+    : sessionid_(msg::uuidgen()), kspec_(kspec), km_(connection_file),
+      hmac_(km_.key()) {}
 
 //
 // This is a quick hack to get a finalizer in the emacs C interface
@@ -251,5 +270,68 @@ void JupyterClient::del(void *client) noexcept {
 //
 void JupyterClient::connect() { km_.connect(); }
 bool JupyterClient::alive() { return km_.is_alive(); }
+
+//
+// client stuff
+//
+
+// execute some code
+const std::string JupyterClient::execute_code(std::string const &code,
+                                              bool silent, bool store_history,
+                                              bool allow_stdin,
+                                              bool stop_on_error) {
+  using std::make_unique;
+  // header
+  auto header =
+      make_unique<msg::Header>("execute_request", "emacs-user", sessionid_);
+  auto id = header->msg_id;
+  // parent header
+  msg::Header::uptr parent_header = nullptr;
+  // metadata
+  msg::Metadata::uptr metadata = nullptr;
+  // content
+  msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
+      code, silent, store_history, nullptr, allow_stdin, stop_on_error);
+  // buffers
+  msg::Buffers::uptr buffers = nullptr;
+  // the message
+  auto msg = std::make_unique<msg::Message>(
+      std::move(header), std::move(parent_header), std::move(metadata),
+      std::move(content), std::move(buffers));
+  // serialize & send
+  auto raw_msgs = serialize_(std::move(msg));
+  km_.shell().send_multipart(raw_msgs);
+  return id;
+}
+
+// serialize a message to a buffer of multipart message parts
+std::vector<raw_message> JupyterClient::serialize_(msg::Message::uptr m) {
+  std::vector<raw_message> to_send;
+  // get the serialized bytes of the message
+  if (m->header != nullptr)
+    to_send.push_back(m->header->serialize());
+  if (m->parent_header != nullptr)
+    to_send.push_back(m->parent_header->serialize());
+  if (m->metadata != nullptr)
+    to_send.push_back(m->metadata->serialize());
+  if (m->content != nullptr)
+    to_send.push_back(m->content->serialize());
+  // FIXME looks like we do not need to prepend the 'ident'?
+  std::vector<raw_message> msgs;
+  msgs.push_back(msg::msg_delim);
+  msgs.push_back(sign_(to_send));
+  for (auto &buf : to_send)
+    msgs.push_back(std::move(buf));
+  if (m->buffers != nullptr)
+    for (auto &buf : m->buffers->data)
+      msgs.push_back(std::move(buf));
+  return msgs;
+}
+
+// get the signature of a block of messages
+raw_message JupyterClient::sign_(std::vector<raw_message> data) {
+  raw_message r{'c'};
+  return r;
+}
 
 } // namespace ejc

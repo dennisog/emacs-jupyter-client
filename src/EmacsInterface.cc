@@ -97,7 +97,7 @@ void provide(emacs_env *env, const char *feature) {
 }
 
 // initialize the module
-int emacs_module_init(struct emacs_runtime *ert) {
+int emacs_module_init(struct emacs_runtime *ert) noexcept {
   emacs_env *env = ert->get_environment(ert);
 
   // the debug function

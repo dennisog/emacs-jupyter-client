@@ -4,6 +4,7 @@
 set(SRCFILES
   "EmacsInterface.cc"
   "JupyterClient.cc"
+  "Message.cc"
   )
 
 add_library(emacs-jupyter-client SHARED ${SRCFILES})
@@ -17,4 +18,5 @@ target_link_libraries(emacs-jupyter-client
   ${Boost_LIBRARIES}
   ${JSONCPP_LIBRARY}
   ${ZEROMQ_LIBRARIES}
+  ${GCRYPT_LIBRARIES}
   )

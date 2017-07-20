@@ -36,6 +36,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 find_package(Boost "1.58" REQUIRED COMPONENTS system)
 find_package(JsonCpp REQUIRED)
 find_package(ZeroMQ 4.0 REQUIRED)
+find_package(GCrypt REQUIRED)
 
 # We need the emacs module headers
 set(EMACS_SRC_DIR "" CACHE STRING "Directory containing Emacs sources")
@@ -48,6 +49,7 @@ include_directories(
   ${EMACS_SRC_DIR}/src
   ${ZEROMQ_INCLUDE_DIRS}
   ${JSONCPP_INCLUDE_DIRS}
+  ${GCRYPT_INCLUDE_DIRS}
   )
 
 ########################################################################
