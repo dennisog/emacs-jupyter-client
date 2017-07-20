@@ -10,6 +10,8 @@ extern "C" {
 #include <gcrypt.h>
 }
 
+#include "Message.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -18,17 +20,31 @@ namespace ejc {
 namespace crypto {
 
 using std::vector;
+using std::string;
+using msg::raw_message;
 
-typedef uint8_t bytes;
+//
+// initialize the gcrypt library
+//
+extern bool inited;
+void init();
 
-// TODO: implement this
+//
+// A small wrapper for the hmac-sha256 algo
+//
+// FIXME: we can abstract the algorithm type out and make this a general class
 class HMAC_SHA256 {
 public:
-  HMAC_SHA256(std::string const &key);
+  // housekeeping
+  HMAC_SHA256(string const &key);
+  HMAC_SHA256(HMAC_SHA256 const &other);
   ~HMAC_SHA256();
+  bool auth(vector<raw_message> const &msgs, raw_message &signature);
+  raw_message sign(vector<raw_message> const &msgs);
 
 private:
-  vector<bytes> key_;
+  vector<uint8_t> key_;
+  gcry_mac_hd_t *handle_;
 };
 
 } // namespace ejc

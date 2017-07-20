@@ -195,8 +195,6 @@ private:
 
   // serialize a message to a buffer of multipart message parts
   std::vector<raw_message> serialize_(msg::Message::uptr);
-  // get the signature of a block of messages
-  raw_message sign_(std::vector<raw_message> data);
 };
 
 } // namespace ejc

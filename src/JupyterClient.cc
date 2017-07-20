@@ -319,19 +319,13 @@ std::vector<raw_message> JupyterClient::serialize_(msg::Message::uptr m) {
   // FIXME looks like we do not need to prepend the 'ident'?
   std::vector<raw_message> msgs;
   msgs.push_back(msg::msg_delim);
-  msgs.push_back(sign_(to_send));
+  msgs.push_back(hmac_.sign(to_send));
   for (auto &buf : to_send)
     msgs.push_back(std::move(buf));
   if (m->buffers != nullptr)
     for (auto &buf : m->buffers->data)
       msgs.push_back(std::move(buf));
   return msgs;
-}
-
-// get the signature of a block of messages
-raw_message JupyterClient::sign_(std::vector<raw_message> data) {
-  raw_message r{'c'};
-  return r;
 }
 
 } // namespace ejc

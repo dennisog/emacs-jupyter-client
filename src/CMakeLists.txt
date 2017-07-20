@@ -5,6 +5,7 @@ set(SRCFILES
   "EmacsInterface.cc"
   "JupyterClient.cc"
   "Message.cc"
+  "Crypto.cc"
   )
 
 add_library(emacs-jupyter-client SHARED ${SRCFILES})
