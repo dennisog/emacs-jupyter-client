@@ -29,13 +29,35 @@ using std::unordered_map;
 using boost::uuids::uuid;
 using std::unique_ptr;
 
-// some tools to help
-extern boost::uuids::random_generator uuidgen;
-
-extern const std::vector<uint8_t> msg_delim;
-
 // quick and dirty typedef for a message buffer
-typedef std::vector<uint8_t> raw_message;
+typedef std::vector<char> raw_message;
+
+//
+// some tools to help
+//
+class Json2Buf {
+public:
+  Json2Buf();
+  raw_message operator()(Json::Value &val);
+
+private:
+  std::stringstream s;
+  unique_ptr<Json::StreamWriter> sw;
+};
+class ISO8601 {
+public:
+  string operator()();
+
+private:
+  std::stringstream s;
+};
+
+extern boost::uuids::random_generator uuidgen;
+extern Json2Buf json2buf;
+extern ISO8601 now;
+
+// constants
+extern const raw_message msg_delim;
 
 struct Header {
   typedef unique_ptr<Header> uptr;
@@ -82,7 +104,7 @@ struct ExecuteRequest : public Content {
 
 struct Buffers {
   typedef unique_ptr<Buffers> uptr;
-  vector<vector<uint8_t>> data;
+  vector<raw_message> data;
 };
 
 struct Message {

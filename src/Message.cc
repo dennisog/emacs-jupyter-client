@@ -4,33 +4,43 @@ namespace ejc {
 namespace msg {
 
 // tools
-boost::uuids::random_generator uuidgen = boost::uuids::random_generator();
-std::string json2string(Json::Value &val) {
-  static Json::FastWriter w;
-  return w.write(val);
+
+Json2Buf::Json2Buf() : sw(nullptr) {
+  Json::StreamWriterBuilder builder;
+  builder.settings_["indentation"] = "";
+  sw.reset(builder.newStreamWriter());
 }
+raw_message Json2Buf::operator()(Json::Value &val) {
+  s.str("");
+  s.clear();
+  sw->write(val, &s);
+  auto str = s.str();
+  raw_message out(begin(str), end(str));
+  return out;
+}
+std::string ISO8601::operator()() {
+  s.str("");
+  s.clear();
+  auto now =
+      std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  s << std::put_time(std::localtime(&now), "%FT%T%Z");
+  return s.str();
+}
+
+boost::uuids::random_generator uuidgen = boost::uuids::random_generator();
+Json2Buf json2buf = Json2Buf();
+ISO8601 now = ISO8601();
 
 //
 // the message delimiter
 //
-const std::vector<uint8_t> msg_delim = {'<', 'I', 'D', 'S', '|',
-                                        'M', 'S', 'G', '>'};
+const raw_message msg_delim = {'<', 'I', 'D', 'S', '|', 'M', 'S', 'G', '>'};
 
 // get a new header
 Header::Header(string msg_type, string username, uuid sessionid)
-    : username(username), session(boost::uuids::to_string(sessionid)),
-      msg_type(msg_type) {
-  // compute the date ISO 8601 FIXME
-  auto now =
-      std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-  std::stringstream s;
-  s << std::put_time(std::localtime(&now), "%FT%T%Z");
-  date = s.str();
-  // compute the message id
-  auto id = uuidgen();
-  msg_id = boost::uuids::to_string(id);
-  // set the session id
-}
+    : msg_id(boost::uuids::to_string(uuidgen())), username(username),
+      session(boost::uuids::to_string(sessionid)), date(now()),
+      msg_type(msg_type) {}
 
 // serialize the header to JSON
 raw_message Header::serialize() {
@@ -41,10 +51,7 @@ raw_message Header::serialize() {
   val["date"] = date;
   val["msg_type"] = msg_type;
   val["version"] = version;
-  auto str = json2string(val);
-  raw_message out;
-  out.insert(begin(out), str.data(), str.data() + str.length());
-  return out;
+  return json2buf(val);
 }
 
 // make an execute_request object
@@ -64,15 +71,11 @@ raw_message ExecuteRequest::serialize() {
   val["store_history"] = store_history;
   val["allow_stdin"] = allow_stdin;
   val["stop_on_error"] = stop_on_error;
-  if (user_expressions != nullptr) {
+  if (user_expressions != nullptr)
     for (auto &e : *user_expressions)
       uexpr[e.first] = e.second;
-  }
   val["user_expressions"] = uexpr;
-  auto str = json2string(val);
-  raw_message out;
-  out.insert(begin(out), str.data(), str.data() + str.length());
-  return out;
+  return json2buf(val);
 }
 
 } // namespace msg

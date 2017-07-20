@@ -45,7 +45,7 @@ public:
   raw_message sign(vector<raw_message> const &msgs);
 
 private:
-  vector<uint8_t> key_;
+  vector<char> key_;
   gcry_mac_hd_t handle_;
 };
 
