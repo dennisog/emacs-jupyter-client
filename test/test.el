@@ -9,9 +9,11 @@
       (nmsgs 5))
   (if (user-ptrp client) (progn
                            (while (> nmsgs 0)
-                             (message "kernel is %s" (if (ejc/alive? client) "alive" "dead"))
+                             ;; query server with low-ish probability (less noise in output)
+                             (when (>  (random 10) 7)
+                               (message "kernel is %s" (if (ejc/alive? client) "alive" "dead")))
+                             ;; send some code every 2 seconds
                              (sleep-for 2)
-                             ;;(setq nmsgs (- nmsgs 1))
-                             )
+                             (message "%s" (ejc/execute-code client "This is some code.")))
                            (ejc/disconnect client))
     (message "Something went wrong: %s" client)))

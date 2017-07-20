@@ -3,6 +3,8 @@
 //
 // Copyright (c) 2017 Dennis Ogbe
 
+#ifndef e5508bc184b6dad4b0b7e3a2109defc651b7c534
+#define e5508bc184b6dad4b0b7e3a2109defc651b7c534
 //
 // straw man HMAC_SHA256 and other stuff
 //
@@ -44,8 +46,10 @@ public:
 
 private:
   vector<uint8_t> key_;
-  gcry_mac_hd_t *handle_;
+  gcry_mac_hd_t handle_;
 };
 
 } // namespace ejc
 } // namespace crypto
+
+#endif // e5508bc184b6dad4b0b7e3a2109defc651b7c534

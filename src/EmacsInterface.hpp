@@ -30,6 +30,11 @@ emacs_value ejc_disconnect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
 // is the kernel alive?
 emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
                              emacs_value args[], void *data) noexcept;
+
+// execute a string of code
+emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
+                             emacs_value args[], void *data) noexcept;
+
 } // extern "C"
 
 //
@@ -53,6 +58,9 @@ namespace ejc {
 // emacs booleans
 inline emacs_value nil(emacs_env *env) { return env->intern(env, "nil"); }
 inline emacs_value t(emacs_env *env) { return env->intern(env, "t"); }
+emacs_value make_string(emacs_env *env, std::string const &str) {
+  return env->make_string(env, str.data(), str.length());
+}
 // get a string from an emacs_value
 std::string get_string(emacs_env *env, emacs_value val) {
   ptrdiff_t size = 0;

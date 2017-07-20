@@ -12,69 +12,6 @@
 namespace ejc {
 
 //
-// A convenience wrapper around the 0MQ socket
-//
-BBSocket::BBSocket(zmq::context_t &ctx, int flags)
-    : sock_(ctx, flags), pi_{.socket = static_cast<void *>(sock_),
-                             .fd = 0,
-                             .events = ZMQ_POLLIN | ZMQ_POLLOUT,
-                             .revents = 0} {}
-void BBSocket::connect(std::string const &endpoint) { sock_.connect(endpoint); }
-void BBSocket::bind(std::string const &endpoint) { sock_.bind(endpoint); }
-
-// polling
-bool BBSocket::pollin(long timeout) { return poll_(ZMQ_POLLIN, timeout); }
-bool BBSocket::pollout(long timeout) { return poll_(ZMQ_POLLOUT, timeout); }
-bool BBSocket::poll_(int flags, long timeout) {
-  pi_.events = flags;
-  auto ret = zmq::poll(&pi_, 1, timeout);
-  if (ret != 0) {
-    return (pi_.revents & flags) == flags ? true : false;
-  } else {
-    return false;
-  }
-}
-
-// blocking i/o
-bool BBSocket::send(raw_message &data) {
-  zmq::message_t msg(data.data(), data.size(), NULL);
-  return sock_.send(msg);
-}
-void BBSocket::send_multipart(std::vector<raw_message> &data) {
-  // definitely not the most efficient way of doing this...
-  zmq::message_t msg;
-  for (size_t i = 0; i < data.size(); ++i) {
-    auto &buf = data[i];
-    msg.rebuild(buf.data(), buf.size(), NULL);
-    if (i == data.size() - 1) {
-      sock_.send(msg, 0);
-    } else {
-      sock_.send(msg, ZMQ_SNDMORE);
-    }
-  }
-}
-// receive a full multipart message
-std::vector<raw_message> BBSocket::recv_multipart() {
-  std::vector<raw_message> out;
-  zmq::message_t msg;
-  bool more = true;
-  while (more) {
-    sock_.recv(&msg);
-    raw_message tmp;
-    auto msg_data = static_cast<char *>(msg.data());
-    tmp.insert(end(tmp), msg_data, msg_data + msg.size());
-    out.push_back(tmp);
-    more = [this] {
-      int64_t sz_inout = 0;
-      size_t len = sizeof(sz_inout);
-      sock_.getsockopt(ZMQ_RCVMORE, &sz_inout, &len);
-      return sz_inout == 0 ? false : true;
-    }();
-  }
-  return out;
-}
-
-//
 // A communication channel to the Jupyter kernel
 //
 Channel::Channel(zmq::context_t &ctx, int flags,
@@ -177,8 +114,8 @@ KernelManager::KernelManager(std::string const &connection_file,
       shell_chan_(ctx_, ZMQ_DEALER, print_message_received),
       stdin_chan_(ctx_, ZMQ_DEALER, print_message_received),
       // FIXME timeout and interval values are hardcoded rn
-      hb_chan_(ctx_, ZMQ_DEALER, std::chrono::milliseconds(100),
-               std::chrono::milliseconds(2500),
+      hb_chan_(ctx_, ZMQ_DEALER, std::chrono::milliseconds(500),
+               std::chrono::milliseconds(3000),
                [this](auto a) {
                  std::lock_guard<std::mutex> lock(hbmtx_);
                  alive_ = a;
@@ -285,19 +222,35 @@ const std::string JupyterClient::execute_code(std::string const &code,
   auto header =
       make_unique<msg::Header>("execute_request", "emacs-user", sessionid_);
   auto id = header->msg_id;
-  // parent header
-  msg::Header::uptr parent_header = nullptr;
-  // metadata
-  msg::Metadata::uptr metadata = nullptr;
   // content
   msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
       code, silent, store_history, nullptr, allow_stdin, stop_on_error);
-  // buffers
-  msg::Buffers::uptr buffers = nullptr;
   // the message
-  auto msg = std::make_unique<msg::Message>(
-      std::move(header), std::move(parent_header), std::move(metadata),
-      std::move(content), std::move(buffers));
+  auto msg = std::make_unique<msg::Message>(std::move(header), nullptr, nullptr,
+                                            std::move(content), nullptr);
+  // serialize & send
+  auto raw_msgs = serialize_(std::move(msg));
+  km_.shell().send_multipart(raw_msgs);
+  return id;
+}
+
+// not very good
+const std::string
+JupyterClient::execute_user_expr(msg::usr_exprs user_expressions, bool silent,
+                                 bool store_history, bool allow_stdin,
+                                 bool stop_on_error) {
+  using std::make_unique;
+  // header
+  auto header =
+      make_unique<msg::Header>("execute_request", "emacs-user", sessionid_);
+  auto id = header->msg_id;
+  // content
+  msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
+      "", silent, store_history, make_unique<msg::usr_exprs>(user_expressions),
+      allow_stdin, stop_on_error);
+  // the message
+  auto msg = std::make_unique<msg::Message>(std::move(header), nullptr, nullptr,
+                                            std::move(content), nullptr);
   // serialize & send
   auto raw_msgs = serialize_(std::move(msg));
   km_.shell().send_multipart(raw_msgs);
@@ -305,17 +258,30 @@ const std::string JupyterClient::execute_code(std::string const &code,
 }
 
 // serialize a message to a buffer of multipart message parts
-std::vector<raw_message> JupyterClient::serialize_(msg::Message::uptr m) {
+std::vector<raw_message> JupyterClient::serialize_(msg::uptr m) {
   std::vector<raw_message> to_send;
+  static const raw_message empty_dict = {'{', '}'};
   // get the serialized bytes of the message
-  if (m->header != nullptr)
+  if (m->header != nullptr) {
     to_send.push_back(m->header->serialize());
-  if (m->parent_header != nullptr)
+  } else {
+    to_send.push_back(empty_dict);
+  }
+  if (m->parent_header != nullptr) {
     to_send.push_back(m->parent_header->serialize());
-  if (m->metadata != nullptr)
+  } else {
+    to_send.push_back(empty_dict);
+  }
+  if (m->metadata != nullptr) {
     to_send.push_back(m->metadata->serialize());
-  if (m->content != nullptr)
+  } else {
+    to_send.push_back(empty_dict);
+  }
+  if (m->content != nullptr) {
     to_send.push_back(m->content->serialize());
+  } else {
+    to_send.push_back(empty_dict);
+  }
   // FIXME looks like we do not need to prepend the 'ident'?
   std::vector<raw_message> msgs;
   msgs.push_back(msg::msg_delim);

@@ -62,6 +62,58 @@ emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
     return env->make_string(env, e.what(), std::strlen(e.what()));
   }
 }
+
+// execute a string of code
+emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
+                             emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto code = ejc::get_string(env, args[1]);
+    // deal with the arguments
+    // FIXME
+    bool silent, store_history, allow_stdin, stop_on_error;
+    switch (nargs) {
+    case 2:
+      silent = false;
+      store_history = false;
+      allow_stdin = false;
+      stop_on_error = false;
+      break;
+    case 3:
+      silent = env->is_not_nil(env, args[2]);
+      store_history = false;
+      allow_stdin = false;
+      stop_on_error = false;
+      break;
+    case 4:
+      silent = env->is_not_nil(env, args[2]);
+      store_history = env->is_not_nil(env, args[3]);
+      allow_stdin = false;
+      stop_on_error = false;
+      break;
+    case 5:
+      silent = env->is_not_nil(env, args[2]);
+      store_history = env->is_not_nil(env, args[3]);
+      allow_stdin = env->is_not_nil(env, args[4]);
+      stop_on_error = false;
+      break;
+    case 6:
+      silent = env->is_not_nil(env, args[2]);
+      store_history = env->is_not_nil(env, args[3]);
+      allow_stdin = env->is_not_nil(env, args[4]);
+      stop_on_error = env->is_not_nil(env, args[5]);
+      break;
+    }
+    auto id = client->execute_code(code, silent, store_history, allow_stdin,
+                                   stop_on_error);
+    return ejc::make_string(env, id);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
 } // extern "C"
 
 //
@@ -134,6 +186,17 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
                                    "(ejc/alive? CLIENT-PTR)\n\n"
                                    "Is the client CLIENT-PTR alive?.\n\n"
                                    "Returns `t' if yes, `nil' if no.",
+                                   NULL));
+
+  // execute a string of code
+  bind_function(env, "ejc/execute-code",
+                env->make_function(env, 2, 6, ejc_execute_code,
+                                   "(ejc/execute-code CLIENT-PTR CODE "
+                                   "&optional SILENT STORE-HISTORY ALLOW-STDIN "
+                                   "STOP-ON-ERROR)\n\n"
+                                   "Execute CODE using CLIENT-PTR\n\n"
+                                   "For info on the optional arguments, check "
+                                   "out the Jupyter message protocol spec.",
                                    NULL));
 
   //

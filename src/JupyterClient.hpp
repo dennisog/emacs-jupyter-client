@@ -6,6 +6,7 @@
 #ifndef e067987744dae1b61d9d4099702a42c702346337
 #define e067987744dae1b61d9d4099702a42c702346337
 
+#include "BBSocket.hpp"
 #include "Crypto.hpp"
 #include "Message.hpp"
 
@@ -29,29 +30,6 @@ namespace ejc {
 // TODO, switch to asio::mutable buffers to avoid memcpy when sending zmq
 // messages.
 using msg::raw_message;
-
-//
-// A convenience wrapper around the 0MQ socket
-//
-class BBSocket {
-public:
-  // housekeeping
-  BBSocket(zmq::context_t &ctx, int flags);
-  void connect(std::string const &endpoint);
-  void bind(std::string const &endpoint);
-  // polling
-  bool pollin(long timeout);
-  bool pollout(long timeout);
-  // blocking i/o
-  bool send(raw_message &data);
-  void send_multipart(std::vector<raw_message> &data);
-  std::vector<raw_message> recv_multipart();
-
-private:
-  bool poll_(int flags, long timeout);
-  zmq::socket_t sock_;
-  zmq::pollitem_t pi_;
-};
 
 //
 // A communication channel to the Jupyter kernel
@@ -194,7 +172,7 @@ private:
   crypto::HMAC_SHA256 hmac_;
 
   // serialize a message to a buffer of multipart message parts
-  std::vector<raw_message> serialize_(msg::Message::uptr);
+  std::vector<raw_message> serialize_(msg::uptr);
 };
 
 } // namespace ejc

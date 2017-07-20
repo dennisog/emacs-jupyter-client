@@ -59,7 +59,7 @@ ExecuteRequest::ExecuteRequest(std::string const &code, bool silent,
 raw_message ExecuteRequest::serialize() {
   Json::Value val;
 
-  val["code"] = "code";
+  val["code"] = code;
   val["silent"] = silent;
   val["store_history"] = store_history;
   val["allow_stdin"] = allow_stdin;

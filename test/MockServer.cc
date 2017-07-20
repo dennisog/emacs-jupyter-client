@@ -2,16 +2,18 @@
 // A mock server for debugging the emacs pupyter client
 //
 
+#include "BBSocket.hpp"
 #include "JupyterClient.hpp"
 #include <boost/format.hpp>
 #include <cassert>
 #include <chrono>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <json/json.h>
+#include <sstream>
 #include <string>
-#include <zmq.hpp>
 
 inline std::string get_endpoint(std::string const &transport,
                                 boost::asio::ip::address_v4 ip,
@@ -20,17 +22,26 @@ inline std::string get_endpoint(std::string const &transport,
       .str();
 }
 
+std::string now() {
+  auto now =
+      std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  std::stringstream s;
+  s << std::put_time(std::localtime(&now), "[%Y-%m-%d %X]: ");
+  return s.str();
+}
+
 int main(int argc, const char *argv[]) {
 
   assert(argc == 2);
+  std::vector<uint8_t> outdelim(100, '0');
 
   // set up the sockets
   zmq::context_t ctx(1);
-  zmq::socket_t control(ctx, ZMQ_ROUTER);
-  zmq::socket_t shell(ctx, ZMQ_ROUTER);
-  zmq::socket_t stdin(ctx, ZMQ_ROUTER);
-  zmq::socket_t hb(ctx, ZMQ_ROUTER);
-  zmq::socket_t iopub(ctx, ZMQ_PUB);
+  ejc::BBSocket control(ctx, ZMQ_ROUTER);
+  ejc::BBSocket shell(ctx, ZMQ_ROUTER);
+  ejc::BBSocket stdin(ctx, ZMQ_ROUTER);
+  ejc::BBSocket hb(ctx, ZMQ_ROUTER);
+  ejc::BBSocket iopub(ctx, ZMQ_PUB);
 
   // get info about the connection
   std::cout << "parsing connection file" << std::endl;
@@ -44,36 +55,33 @@ int main(int argc, const char *argv[]) {
   stdin.bind(get_endpoint(cp.transport, cp.ip, cp.stdin_port));
   hb.bind(get_endpoint(cp.transport, cp.ip, cp.hb_port));
   iopub.bind(get_endpoint(cp.transport, cp.ip, cp.iopub_port));
-  std::vector<zmq::pollitem_t> pi = {
-      {static_cast<void *>(control), 0, ZMQ_POLLIN | ZMQ_POLLOUT, 0},
-      {static_cast<void *>(shell), 0, ZMQ_POLLIN | ZMQ_POLLOUT, 0},
-      {static_cast<void *>(stdin), 0, ZMQ_POLLIN | ZMQ_POLLOUT, 0},
-      {static_cast<void *>(hb), 0, ZMQ_POLLIN | ZMQ_POLLOUT, 0},
-      {static_cast<void *>(iopub), 0, ZMQ_POLLIN | ZMQ_POLLOUT, 0}};
 
   // loop and print
   std::cout << "in main loop" << std::endl;
   while (true) {
-    // poll until we have something
-    zmq::poll(pi.data(), pi.size(), -1);
     // check the heartbeart socket
-    if ((pi[3].revents & ZMQ_POLLIN) == ZMQ_POLLIN) {
-      zmq::message_t msg;
-      zmq::message_t id;
-      hb.recv(&id);  // first message is the id
-      hb.recv(&msg); // then comes the message
+    if (hb.pollin(10)) {
+      auto rx = hb.recv_multipart();
       std::string str;
-      str.assign(static_cast<char *>(msg.data()), msg.size());
-      auto now = std::chrono::system_clock::to_time_t(
-          std::chrono::system_clock::now());
-      std::cout << std::put_time(std::localtime(&now), "[%Y-%m-%d %X]: ")
-                << "Received heartbeat: " << str << std::endl;
+      str.assign(begin(rx[1]), end(rx[1]));
+      std::cout << now() << "Received heartbeat: " << str << std::endl;
       // respond to the ping
-      std::string pong("pong");
-      zmq::message_t out(pong.length());
-      memcpy(out.data(), pong.data(), pong.length());
-      hb.send(id, ZMQ_SNDMORE);
-      hb.send(out);
+      std::vector<ejc::msg::raw_message> out;
+      out.push_back(rx[0]);
+      out.push_back({'p', 'o', 'n', 'g'});
+      hb.send_multipart(out);
+    }
+    // check the shell socket
+    if (shell.pollin(10)) {
+      auto rx = shell.recv_multipart();
+      std::cout << now() << "Received message on shell buffer! " << std::endl;
+      // dump to file
+      std::ofstream of("mock_server_data", std::ios::app | std::ios::binary);
+      for (auto const &msg : rx) {
+        of.write((char *)msg.data(), msg.size());
+      }
+      of.write((char *)outdelim.data(), outdelim.size());
+      of.close();
     }
   }
 }

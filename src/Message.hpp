@@ -99,6 +99,9 @@ struct Message {
         metadata(std::move(metadata)), content(std::move(content)),
         buffers(std::move(buffers)) {}
 };
+
+// convenience typedef
+typedef Message::uptr uptr;
 } // namespace msg
 } // namespace ejc
 

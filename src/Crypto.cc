@@ -32,7 +32,7 @@ void init() {
 // housekeeping
 //
 HMAC_SHA256::HMAC_SHA256(string const &key)
-    : key_(key.data(), key.data() + key.length()), handle_(NULL) {
+    : key_(key.data(), key.data() + key.length()) {
   // initialize gcrypt if it hasn't been already
   if (!inited)
     init();
@@ -40,11 +40,10 @@ HMAC_SHA256::HMAC_SHA256(string const &key)
   if (key.size() == 0)
     throw std::runtime_error("HMAC_SHA256: Key of size 0");
   // get the mac object
-  auto err = gcry_mac_open(handle_, GCRY_MAC_HMAC_SHA256, 0, NULL);
+  auto err = gcry_mac_open(&handle_, GCRY_MAC_HMAC_SHA256, 0, NULL);
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not initialize context");
-  err =
-      gcry_mac_setkey(*handle_, static_cast<void *>(key_.data()), key_.size());
+  err = gcry_mac_setkey(handle_, static_cast<void *>(key_.data()), key_.size());
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not store key");
   err = gcry_mac_test_algo(GCRY_MAC_HMAC_SHA256);
@@ -53,13 +52,12 @@ HMAC_SHA256::HMAC_SHA256(string const &key)
 }
 
 HMAC_SHA256::HMAC_SHA256(HMAC_SHA256 const &other)
-    : key_(begin(other.key_), end(other.key_)), handle_(NULL) {
+    : key_(begin(other.key_), end(other.key_)) {
 
-  auto err = gcry_mac_open(handle_, GCRY_MAC_HMAC_SHA256, 0, NULL);
+  auto err = gcry_mac_open(&handle_, GCRY_MAC_HMAC_SHA256, 0, NULL);
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not initialize context");
-  err =
-      gcry_mac_setkey(*handle_, static_cast<void *>(key_.data()), key_.size());
+  err = gcry_mac_setkey(handle_, static_cast<void *>(key_.data()), key_.size());
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not store key");
   err = gcry_mac_test_algo(GCRY_MAC_HMAC_SHA256);
@@ -69,7 +67,7 @@ HMAC_SHA256::HMAC_SHA256(HMAC_SHA256 const &other)
 
 HMAC_SHA256::~HMAC_SHA256() {
   if (handle_) {
-    gcry_mac_close(*handle_);
+    gcry_mac_close(handle_);
   }
 }
 
@@ -77,10 +75,10 @@ HMAC_SHA256::~HMAC_SHA256() {
 // functionality
 //
 
-inline void feed(gcry_mac_hd_t *handle, vector<raw_message> const &msgs) {
+inline void feed(gcry_mac_hd_t &handle, vector<raw_message> const &msgs) {
   gcry_error_t err;
   for (auto const &msg : msgs) {
-    err = gcry_mac_write(*handle, static_cast<const void *>(msg.data()),
+    err = gcry_mac_write(handle, static_cast<const void *>(msg.data()),
                          msg.size());
     if (err)
       throw std::runtime_error(
@@ -91,13 +89,13 @@ inline void feed(gcry_mac_hd_t *handle, vector<raw_message> const &msgs) {
 bool HMAC_SHA256::auth(vector<raw_message> const &msgs,
                        raw_message &signature) {
   // reset state
-  auto err = gcry_mac_reset(*handle_);
+  auto err = gcry_mac_reset(handle_);
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not reset the algorithm");
   // write input data
   feed(handle_, msgs);
   // verify the signature
-  err = gcry_mac_verify(*handle_, static_cast<void *>(signature.data()),
+  err = gcry_mac_verify(handle_, static_cast<void *>(signature.data()),
                         signature.size());
   switch (err) {
   case GPG_ERR_CHECKSUM:
@@ -110,7 +108,7 @@ bool HMAC_SHA256::auth(vector<raw_message> const &msgs,
 }
 raw_message HMAC_SHA256::sign(vector<raw_message> const &msgs) {
   // reset state
-  auto err = gcry_mac_reset(*handle_);
+  auto err = gcry_mac_reset(handle_);
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not reset the algorithm");
   // write input data
@@ -118,7 +116,7 @@ raw_message HMAC_SHA256::sign(vector<raw_message> const &msgs) {
   // pull the signature out
   size_t len = gcry_mac_get_algo_maclen(GCRY_MAC_HMAC_SHA256);
   raw_message sig(len);
-  err = gcry_mac_read(*handle_, static_cast<void *>(sig.data()), &len);
+  err = gcry_mac_read(handle_, static_cast<void *>(sig.data()), &len);
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not read signature");
   return sig;
