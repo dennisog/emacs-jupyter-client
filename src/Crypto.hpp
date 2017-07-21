@@ -42,8 +42,9 @@ public:
   HMAC_SHA256(string const &key);
   HMAC_SHA256(HMAC_SHA256 const &other);
   ~HMAC_SHA256();
-  bool auth(vector<raw_message> const &msgs, raw_message &signature);
-  raw_message sign(vector<raw_message> const &msgs);
+  bool verify(vector<raw_message> const &msgs, raw_message &signature);
+  bool hexverify(vector<raw_message> const &msgs, raw_message &signature);
+  raw_message digest(vector<raw_message> const &msgs);
   raw_message hexdigest(vector<raw_message> const &msgs);
 
 private:

@@ -33,16 +33,17 @@ bool BBSocket::poll_(int flags, long timeout) {
 
 // blocking i/o
 bool BBSocket::send(raw_message &data) {
-  zmq::message_t msg(data.data(), data.size(), NULL);
+  // zmq::message_t msg(data.data(), data.size(), NULL);
+  zmq::message_t msg(data.size());
+  memcpy(msg.data(), data.data(), data.size());
   return sock_.send(msg);
 }
 
 void BBSocket::send_multipart(std::vector<raw_message> &data) {
-  // definitely not the most efficient way of doing this...
-  zmq::message_t msg;
   for (size_t i = 0; i < data.size(); ++i) {
     auto &buf = data[i];
-    msg.rebuild(buf.data(), buf.size(), NULL);
+    zmq::message_t msg(buf.size());
+    memcpy(msg.data(), buf.data(), buf.size());
     if (i == data.size() - 1) {
       sock_.send(msg, 0);
     } else {

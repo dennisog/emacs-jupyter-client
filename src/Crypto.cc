@@ -87,8 +87,8 @@ inline void feed(gcry_mac_hd_t &handle, vector<raw_message> const &msgs) {
   }
 }
 
-bool HMAC_SHA256::auth(vector<raw_message> const &msgs,
-                       raw_message &signature) {
+bool HMAC_SHA256::verify(vector<raw_message> const &msgs,
+                         raw_message &signature) {
   // reset state
   auto err = gcry_mac_reset(handle_);
   if (err)
@@ -108,7 +108,21 @@ bool HMAC_SHA256::auth(vector<raw_message> const &msgs,
   }
 }
 
-raw_message HMAC_SHA256::sign(vector<raw_message> const &msgs) {
+// same as verify(...) above, but message is expected to be in hex format
+bool HMAC_SHA256::hexverify(vector<raw_message> const &msgs,
+                            raw_message &signature) {
+  size_t len = gcry_mac_get_algo_maclen(GCRY_MAC_HMAC_SHA256);
+  auto hexlen = len + len;
+  if (signature.size() != hexlen) {
+    return false;
+  }
+  raw_message digest;
+  boost::algorithm::unhex(begin(signature), end(signature),
+                          back_inserter(digest));
+  return verify(msgs, digest);
+}
+
+raw_message HMAC_SHA256::digest(vector<raw_message> const &msgs) {
   // reset state
   auto err = gcry_mac_reset(handle_);
   if (err)
@@ -125,10 +139,9 @@ raw_message HMAC_SHA256::sign(vector<raw_message> const &msgs) {
 }
 
 raw_message HMAC_SHA256::hexdigest(vector<raw_message> const &msgs) {
-  auto raw = sign(msgs);
-  std::string str;
-  boost::algorithm::hex(begin(raw), end(raw), back_inserter(str));
-  raw_message out(begin(str), end(str));
+  auto raw = digest(msgs);
+  raw_message out;
+  boost::algorithm::hex(begin(raw), end(raw), back_inserter(out));
   return out;
 }
 

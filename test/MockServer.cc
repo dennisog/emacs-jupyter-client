@@ -74,14 +74,26 @@ int main(int argc, const char *argv[]) {
     // check the shell socket
     if (shell.pollin(10)) {
       auto rx = shell.recv_multipart();
-      std::cout << now() << "Received message on shell buffer! " << std::endl;
+      std::cout << now() << "Received message on shell buffer:\n";
+      std::string delim(rx[1].data(), rx[1].size());
+      std::cout << "Delim: " << delim << "\n";
+      std::string hmac(rx[2].data(), rx[2].size());
+      std::cout << "HMAC: " << hmac << "\n";
+      std::string header(rx[3].data(), rx[3].size());
+      std::cout << "header: " << header << "\n";
+      std::string parent_header(rx[4].data(), rx[4].size());
+      std::cout << "parent_header: " << parent_header << "\n";
+      std::string metadata(rx[5].data(), rx[5].size());
+      std::cout << "meatadata: " << metadata << "\n";
+      std::string content(rx[6].data(), rx[6].size());
+      std::cout << "content: " << content << "\n";
       // dump to file
-      std::ofstream of("mock_server_data", std::ios::app | std::ios::binary);
-      for (auto const &msg : rx) {
-        of.write((char *)msg.data(), msg.size());
-      }
-      of.write((char *)outdelim.data(), outdelim.size());
-      of.close();
+      // std::ofstream of("mock_server_data", std::ios::app | std::ios::binary);
+      // for (auto const &msg : rx) {
+      //   of.write((char *)msg.data(), msg.size());
+      // }
+      // of.write((char *)outdelim.data(), outdelim.size());
+      // of.close();
     }
   }
 }
