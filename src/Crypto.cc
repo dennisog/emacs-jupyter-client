@@ -5,6 +5,7 @@
 
 #include "Crypto.hpp"
 
+#include <boost/algorithm/hex.hpp>
 #include <exception>
 
 namespace ejc {
@@ -106,6 +107,7 @@ bool HMAC_SHA256::auth(vector<raw_message> const &msgs,
     throw std::runtime_error("HMAC_SHA256: Errors verifying checksum");
   }
 }
+
 raw_message HMAC_SHA256::sign(vector<raw_message> const &msgs) {
   // reset state
   auto err = gcry_mac_reset(handle_);
@@ -120,6 +122,14 @@ raw_message HMAC_SHA256::sign(vector<raw_message> const &msgs) {
   if (err)
     throw std::runtime_error("HMAC_SHA256: Could not read signature");
   return sig;
+}
+
+raw_message HMAC_SHA256::hexdigest(vector<raw_message> const &msgs) {
+  auto raw = sign(msgs);
+  std::string str;
+  boost::algorithm::hex(begin(raw), end(raw), back_inserter(str));
+  raw_message out(begin(str), end(str));
+  return out;
 }
 
 } // namespace ejc

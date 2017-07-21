@@ -68,7 +68,7 @@ std::string get_string(emacs_env *env, emacs_value val) {
   std::vector<char> buf(size);
   env->copy_string_contents(env, val, buf.data(), &size);
   std::string str;
-  str.assign(buf.data(), size);
+  str.assign(buf.data(), size - 1); // to remove the null byte
   return str;
 }
 // pointer cast

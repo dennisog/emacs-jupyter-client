@@ -14,6 +14,6 @@
                                (message "kernel is %s" (if (ejc/alive? client) "alive" "dead")))
                              ;; send some code every 2 seconds
                              (sleep-for 2)
-                             (message "%s" (ejc/execute-code client "This is some code.")))
+                             (message "%s" (ejc/execute-code client "This λ some code.")))
                            (ejc/disconnect client))
     (message "Something went wrong: %s" client)))

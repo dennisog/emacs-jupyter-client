@@ -285,7 +285,7 @@ std::vector<raw_message> JupyterClient::serialize_(msg::uptr m) {
   // FIXME looks like we do not need to prepend the 'ident'?
   std::vector<raw_message> msgs;
   msgs.push_back(msg::msg_delim);
-  msgs.push_back(hmac_.sign(to_send));
+  msgs.push_back(hmac_.hexdigest(to_send));
   for (auto &buf : to_send)
     msgs.push_back(std::move(buf));
   if (m->buffers != nullptr)

@@ -15,6 +15,7 @@ extern "C" {
 #include "Message.hpp"
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -43,10 +44,12 @@ public:
   ~HMAC_SHA256();
   bool auth(vector<raw_message> const &msgs, raw_message &signature);
   raw_message sign(vector<raw_message> const &msgs);
+  raw_message hexdigest(vector<raw_message> const &msgs);
 
 private:
   vector<char> key_;
   gcry_mac_hd_t handle_;
+  std::stringstream s;
 };
 
 } // namespace ejc
