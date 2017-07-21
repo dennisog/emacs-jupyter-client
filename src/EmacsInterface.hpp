@@ -105,6 +105,75 @@ inline std::vector<double> get_vector(emacs_env *env, emacs_value vec) {
   }
   return out;
 }
-} // namespace ejs
+
+// initialize a plist. FIXME this can be cleaned up
+template <typename T>
+inline emacs_value init_plist(emacs_env *env, std::string const &key, T val);
+template <>
+inline emacs_value init_plist(emacs_env *env, std::string const &key,
+                              std::string const &val) {
+  auto Flist = env->intern(env, "list");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = env->make_string(env, val.data(), val.length());
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Flist, 2, args);
+}
+template <>
+inline emacs_value init_plist(emacs_env *env, std::string const &key, int val) {
+  auto Flist = env->intern(env, "list");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = env->make_integer(env, val);
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Flist, 2, args);
+}
+template <>
+inline emacs_value init_plist(emacs_env *env, std::string const &key,
+                              float val) {
+  auto Flist = env->intern(env, "list");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = env->make_float(env, val);
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Flist, 2, args);
+}
+
+// add to a plist
+template <typename T>
+inline emacs_value plist_add(emacs_env *env, std::string const &key, T val);
+template <>
+inline emacs_value plist_add(emacs_env *env, std::string const &key,
+                             std::string const &val) {
+  auto Fplist_put = env->intern(env, "plist_put");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = env->make_string(env, val.data(), val.length());
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Fplist_put, 2, args);
+}
+template <>
+inline emacs_value plist_add(emacs_env *env, std::string const &key, int val) {
+  auto Fplist_put = env->intern(env, "plist_put");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = env->make_integer(env, val);
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Fplist_put, 2, args);
+}
+template <>
+inline emacs_value plist_add(emacs_env *env, std::string const &key,
+                             float val) {
+  auto Fplist_put = env->intern(env, "plist_put");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = env->make_float(env, val);
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Fplist_put, 2, args);
+}
+template <>
+inline emacs_value plist_add(emacs_env *env, std::string const &key,
+                             emacs_value val) {
+  auto Fplist_put = env->intern(env, "plist_put");
+  auto Skey = env->intern(env, key.c_str());
+  emacs_value args[] = {Skey, val};
+  return env->funcall(env, Fplist_put, 2, args);
+}
+
+} // namespace ejc
 
 #endif // e34f90230d2f45b894e32a381e88eddc0c6ee3a4

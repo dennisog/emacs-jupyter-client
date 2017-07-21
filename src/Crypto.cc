@@ -108,6 +108,48 @@ bool HMAC_SHA256::verify(vector<raw_message> const &msgs,
   }
 }
 
+bool HMAC_SHA256::verify(vector<raw_message>::iterator start,
+                         vector<raw_message>::iterator stop,
+                         raw_message &signature) {
+  // reset state
+  auto err = gcry_mac_reset(handle_);
+  if (err)
+    throw std::runtime_error("HMAC_SHA256: Could not reset the algorithm");
+  // write input data
+  for (; start != stop; ++start) {
+    err = gcry_mac_write(handle_, static_cast<const void *>(start->data()),
+                         start->size());
+    if (err)
+      throw std::runtime_error(
+          "HMAC_SHA256: Could not write data to algorithm");
+  }
+  // verify the signature
+  err = gcry_mac_verify(handle_, static_cast<void *>(signature.data()),
+                        signature.size());
+  switch (err) {
+  case GPG_ERR_CHECKSUM:
+    return false;
+  case 0:
+    return true;
+  default:
+    throw std::runtime_error("HMAC_SHA256: Errors verifying checksum");
+  }
+}
+
+bool HMAC_SHA256::hexverify(vector<raw_message>::iterator start,
+                            vector<raw_message>::iterator stop,
+                            raw_message &signature) {
+  size_t len = gcry_mac_get_algo_maclen(GCRY_MAC_HMAC_SHA256);
+  auto hexlen = len + len;
+  if (signature.size() != hexlen) {
+    return false;
+  }
+  raw_message digest;
+  boost::algorithm::unhex(begin(signature), end(signature),
+                          back_inserter(digest));
+  return verify(start, stop, signature);
+}
+
 // same as verify(...) above, but message is expected to be in hex format
 bool HMAC_SHA256::hexverify(vector<raw_message> const &msgs,
                             raw_message &signature) {

@@ -7,6 +7,7 @@ set(SRCFILES
   "BBSocket.cc"
   "Message.cc"
   "Crypto.cc"
+  "Handlers.cc"
   )
 
 add_library(emacs-jupyter-client SHARED ${SRCFILES})

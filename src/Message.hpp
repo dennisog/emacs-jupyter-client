@@ -14,6 +14,10 @@
 #include <string>
 #include <unordered_map>
 
+extern "C" {
+#include <emacs-module.h>
+}
+
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -28,6 +32,7 @@ using std::vector;
 using std::unordered_map;
 using boost::uuids::uuid;
 using std::unique_ptr;
+using std::shared_ptr;
 
 // quick and dirty typedef for a message buffer
 typedef std::vector<char> raw_message;
@@ -69,18 +74,22 @@ struct Header {
   string version = "5.0";
 
   Header(string msg_type, string username, uuid sessionid);
+  Header(Json::Value &json);
   raw_message serialize();
+  emacs_value toLisp(emacs_env *env);
 };
 
 // I am not sure we need this
 struct Metadata {
   typedef unique_ptr<Metadata> uptr;
-  virtual raw_message serialize() = 0;
+  virtual raw_message serialize();
+  virtual emacs_value toLisp(emacs_env *env);
 };
 
 struct Content {
   typedef unique_ptr<Content> uptr;
   virtual raw_message serialize() = 0;
+  virtual emacs_value toLisp(emacs_env *env) = 0;
 };
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
@@ -100,6 +109,19 @@ struct ExecuteRequest : public Content {
                  unique_ptr<usr_exprs> user_expressions, bool allow_stdin,
                  bool stop_on_error);
   raw_message serialize();
+  emacs_value toLisp(emacs_env *env);
+};
+
+struct ExecuteReply : public Content {
+  typedef unique_ptr<ExecuteReply> uptr;
+  enum class Status { ok, error, abort };
+  Status status;
+  unique_ptr<usr_exprs> user_expressions;
+  int execution_count;
+
+  ExecuteReply(Json::Value &json);
+  emacs_value toLisp(emacs_env *env);
+  raw_message serialize();
 };
 
 struct Buffers {
@@ -109,6 +131,7 @@ struct Buffers {
 
 struct Message {
   typedef unique_ptr<Message> uptr;
+  typedef shared_ptr<Message> sptr;
   unique_ptr<Header> header;
   unique_ptr<Header> parent_header;
   unique_ptr<Metadata> metadata;
@@ -120,10 +143,14 @@ struct Message {
       : header(std::move(header)), parent_header(std::move(parent_header)),
         metadata(std::move(metadata)), content(std::move(content)),
         buffers(std::move(buffers)) {}
+  Message()
+      : header(nullptr), parent_header(nullptr), metadata(nullptr),
+        content(nullptr), buffers(nullptr) {}
 };
 
 // convenience typedef
 typedef Message::uptr uptr;
+typedef Message::sptr sptr;
 } // namespace msg
 } // namespace ejc
 

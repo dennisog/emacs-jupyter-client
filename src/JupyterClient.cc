@@ -130,12 +130,13 @@ void print_message_received(std::vector<raw_message> msgs) {
   of.close();
 }
 
-KernelManager::KernelManager(std::string const &connection_file,
-                             unsigned int nthreads)
+KernelManager::KernelManager(
+    std::string const &connection_file, unsigned int nthreads,
+    std::function<void(std::vector<raw_message>)> shell_handler)
     : connection_file_name_(connection_file), ctx_(zmq::context_t(nthreads)),
       cparams_(parse_connection_file_(connection_file)),
       control_chan_(ctx_, ZMQ_DEALER, print_message_received),
-      shell_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      shell_chan_(ctx_, ZMQ_DEALER, shell_handler),
       stdin_chan_(ctx_, ZMQ_DEALER, print_message_received),
       // FIXME timeout and interval values are hardcoded rn
       hb_chan_(ctx_, ZMQ_DEALER, std::chrono::milliseconds(500),
@@ -227,10 +228,15 @@ void KernelManager::connect() {
   }
 }
 
+// this sucks, need to redo initialization
 JupyterClient::JupyterClient(KernelSpec const &kspec,
                              std::string const &connection_file)
-    : sessionid_(msg::uuidgen()), kspec_(kspec), km_(connection_file),
-      hmac_(km_.key()) {}
+    : sessionid_(msg::uuidgen()), kspec_(kspec), queue_(100),
+      shell_handler_("garbage key...", queue_),
+      km_(connection_file, 1, [this](auto msgs) { shell_handler_(msgs); }),
+      hmac_(km_.key()) {
+  shell_handler_.set_key(km_.key());
+}
 
 //
 // This is a quick hack to get a finalizer in the emacs C interface

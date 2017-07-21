@@ -43,7 +43,11 @@ public:
   HMAC_SHA256(HMAC_SHA256 const &other);
   ~HMAC_SHA256();
   bool verify(vector<raw_message> const &msgs, raw_message &signature);
+  bool verify(vector<raw_message>::iterator start,
+              vector<raw_message>::iterator stop, raw_message &signature);
   bool hexverify(vector<raw_message> const &msgs, raw_message &signature);
+  bool hexverify(vector<raw_message>::iterator start,
+                 vector<raw_message>::iterator stop, raw_message &signature);
   raw_message digest(vector<raw_message> const &msgs);
   raw_message hexdigest(vector<raw_message> const &msgs);
 

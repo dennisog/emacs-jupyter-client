@@ -6,8 +6,10 @@
 #ifndef e067987744dae1b61d9d4099702a42c702346337
 #define e067987744dae1b61d9d4099702a42c702346337
 
+#include "BBQueue.hpp"
 #include "BBSocket.hpp"
 #include "Crypto.hpp"
+#include "Handlers.hpp"
 #include "Message.hpp"
 
 #include <boost/asio.hpp>
@@ -102,7 +104,8 @@ struct ConnectionParams {
 
 class KernelManager {
 public:
-  KernelManager(std::string const &connection_file, unsigned int nthreads = 1);
+  KernelManager(std::string const &connection_file, unsigned int nthreads,
+                std::function<void(std::vector<raw_message>)> shell_handler);
   ~KernelManager();
   void connect();
   bool is_alive();
@@ -133,6 +136,11 @@ private:
   // heartbeat
   std::mutex hbmtx_;
   bool alive_;
+
+  // kernel status
+  std::mutex statmtx_;
+  enum class Status { Busy, Idle, Starting };
+  Status status;
 
   // can't copy this
   KernelManager(KernelManager const &other) = delete;
@@ -170,6 +178,12 @@ public:
 private:
   // Info about the kernel
   KernelSpec kspec_;
+  // we keep a queue of messages for emacs
+  bbq::BBQueue<msg::sptr> queue_;
+  //
+  // Handlers
+  //
+  handlers::ShellHandler shell_handler_;
   // The connection to the kernel
   KernelManager km_;
   // we need to sign and auth messages
