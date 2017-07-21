@@ -44,7 +44,7 @@ Header::Header(string msg_type, string username, uuid sessionid)
 
 // serialize the header to JSON
 raw_message Header::serialize() {
-  Json::Value val;
+  Json::Value val(Json::ValueType::objectValue);
   val["msg_id"] = msg_id;
   val["username"] = username;
   val["session"] = session;
@@ -64,8 +64,8 @@ ExecuteRequest::ExecuteRequest(std::string const &code, bool silent,
       stop_on_error(stop_on_error) {}
 
 raw_message ExecuteRequest::serialize() {
-  Json::Value val;
-  Json::Value uexpr;
+  Json::Value val(Json::ValueType::objectValue);
+  Json::Value uexpr(Json::ValueType::objectValue);
   val["code"] = code;
   val["silent"] = silent;
   val["store_history"] = store_history;

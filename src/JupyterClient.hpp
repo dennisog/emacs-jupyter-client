@@ -103,7 +103,7 @@ struct ConnectionParams {
 class KernelManager {
 public:
   KernelManager(std::string const &connection_file, unsigned int nthreads = 1);
-
+  ~KernelManager();
   void connect();
   bool is_alive();
   std::string key() { return cparams_.key; }
@@ -133,6 +133,10 @@ private:
   // heartbeat
   std::mutex hbmtx_;
   bool alive_;
+
+  // can't copy this
+  KernelManager(KernelManager const &other) = delete;
+  KernelManager &operator=(KernelManager const &) = delete;
 };
 
 class JupyterClient {

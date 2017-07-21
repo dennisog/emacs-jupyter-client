@@ -138,10 +138,24 @@ raw_message HMAC_SHA256::digest(vector<raw_message> const &msgs) {
   return sig;
 }
 
+//
+// boost::algorithm::unhex works fine for 'baddad42' hex strings, but 'hex' only
+// outputs uppercase 'BADDAD42' hex strings. could just write our own hex
+// functions, but I am lazy so I just convert. FIXME: write own hex functions.
+//
+template <typename Iterator> void downcase_hex(Iterator first, Iterator last) {
+  for (; first != last; ++first) {
+    auto c = static_cast<char>(*first);
+    if (c >= 'A' && c <= 'F')
+      *first = c + 32;
+  }
+}
+
 raw_message HMAC_SHA256::hexdigest(vector<raw_message> const &msgs) {
   auto raw = digest(msgs);
   raw_message out;
   boost::algorithm::hex(begin(raw), end(raw), back_inserter(out));
+  downcase_hex(begin(out), end(out));
   return out;
 }
 

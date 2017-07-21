@@ -42,6 +42,14 @@ void Channel::start() {
   }
 }
 
+void Channel::stop() {
+  {
+    std::lock_guard<std::mutex> lock(loopmtx_);
+    running_ = false;
+  }
+  rx_thread_.join();
+}
+
 void Channel::run() {
   while (true) {
     if (!running()) {
@@ -103,7 +111,23 @@ void HBChannel::start() {
 
 // debug dummy handler
 void print_message_received(std::vector<raw_message> msgs) {
-  std::cerr << "Message received." << std::endl;
+  // dump to file
+  // std::vector<uint8_t> outdelim(100, '0');
+  // std::ofstream of("rx_data", std::ios::app | std::ios::binary);
+  // for (auto const &msg : msgs) {
+  //   of.write((char *)msg.data(), msg.size());
+  // }
+  // of.write((char *)outdelim.data(), outdelim.size());
+  // of.close();
+  Json::CharReaderBuilder builder;
+  builder["collectComments"] = false;
+  auto rd = std::unique_ptr<Json::CharReader>(builder.newCharReader());
+  Json::Value value;
+  std::string str;
+  rd->parse(msgs[5].data(), msgs[5].data() + msgs[5].size(), &value, &str);
+  std::ofstream of("rx_content", std::ios::app);
+  of << value;
+  of.close();
 }
 
 KernelManager::KernelManager(std::string const &connection_file,
@@ -121,6 +145,19 @@ KernelManager::KernelManager(std::string const &connection_file,
                  alive_ = a;
                }),
       iopub_chan_(ctx_, ZMQ_PUB, print_message_received), alive_(false) {}
+
+KernelManager::~KernelManager() {
+  if (control_chan_.running())
+    control_chan_.stop();
+  if (shell_chan_.running())
+    shell_chan_.stop();
+  if (stdin_chan_.running())
+    stdin_chan_.stop();
+  if (hb_chan_.running())
+    hb_chan_.stop();
+  if (iopub_chan_.running())
+    iopub_chan_.stop();
+}
 
 const ConnectionParams
 KernelManager::parse_connection_file_(std::string const &fn) {
