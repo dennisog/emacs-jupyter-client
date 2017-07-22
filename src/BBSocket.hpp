@@ -28,7 +28,7 @@ public:
   bool pollin(long timeout);
   bool pollout(long timeout);
   // blocking i/o
-  bool send(raw_message &data);
+  bool send(raw_message &data, int flags = 0);
   void send_multipart(std::vector<raw_message> &data);
   std::vector<raw_message> recv_multipart();
 

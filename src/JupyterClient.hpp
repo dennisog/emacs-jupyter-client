@@ -105,7 +105,10 @@ struct ConnectionParams {
 class KernelManager {
 public:
   KernelManager(ConnectionParams &cparams, unsigned int nthreads,
-                std::function<void(std::vector<raw_message>)> shell_handler);
+                handlers::handler control_handler,
+                handlers::handler shell_handler,
+                handlers::handler stdin_handler,
+                handlers::handler iopub_handler);
   ~KernelManager();
   void connect();
   bool is_alive();
@@ -136,7 +139,7 @@ private:
   // kernel status
   std::mutex statmtx_;
   enum class Status { Busy, Idle, Starting };
-  Status status;
+  Status status = Status::Starting;
 
   // can't copy this
   KernelManager(KernelManager const &other) = delete;
@@ -172,6 +175,9 @@ public:
   // interpret a connection file
   static const ConnectionParams parse_connection_file_(std::string const &fn);
 
+  // get the queue to empty it
+  handlers::Messagequeue &queue() { return queue_; }
+
 private:
   // every session is unique
   boost::uuids::uuid sessionid_;
@@ -180,7 +186,7 @@ private:
   // connection params
   ConnectionParams cparams_;
   // we keep a queue of messages for emacs
-  bbq::BBQueue<msg::sptr> queue_;
+  handlers::Messagequeue queue_;
   // we need to sign and auth messages
   crypto::HMAC_SHA256 hmac_;
 

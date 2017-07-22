@@ -11,6 +11,7 @@
 #include "Message.hpp"
 
 #include <csignal>
+#include <vector>
 
 #include <boost/core/noncopyable.hpp>
 #include <json/json.h>
@@ -18,12 +19,16 @@
 namespace ejc {
 namespace handlers {
 
+// types be getting too long...
+typedef std::function<void(std::vector<msg::raw_message>)> handler;
+typedef bbq::BBQueue<Json::Value> Messagequeue;
+
 //
 // Handler base class: commonalities between all handlers
 //
 class Handler : private boost::noncopyable {
 public:
-  Handler(std::string const &hmac_key, bbq::BBQueue<msg::sptr> &queue);
+  Handler(std::string const &hmac_key, Messagequeue &queue);
   virtual void operator()(std::vector<msg::raw_message> msgs) = 0;
 
 protected:
@@ -31,20 +36,19 @@ protected:
   crypto::HMAC_SHA256 hmac_;
   std::unique_ptr<Json::CharReader> parser_;
   // we keep a ref to the queue we need to push msg::uptrs on
-  bbq::BBQueue<msg::sptr> &queue_;
+  Messagequeue &queue_;
   // handlers can notify emacs after they have handled a message
   void notify_emacs_();
   // since every handler has to parse the headers and verify the checksums, we
   // make this a method of the base class
-  void process_headers_(msg::Message *msg,
-                        std::vector<msg::raw_message>::iterator &it,
-                        std::vector<msg::raw_message>::iterator end);
+  Json::Value process_headers_(std::vector<msg::raw_message>::iterator &it,
+                               std::vector<msg::raw_message>::iterator end);
 };
 
 // Handle messages from the shell channel
 class ShellHandler : public Handler {
 public:
-  ShellHandler(std::string const &hmac_key, bbq::BBQueue<msg::sptr> &queue)
+  ShellHandler(std::string const &hmac_key, Messagequeue &queue)
       : Handler(hmac_key, queue) {}
   void operator()(std::vector<msg::raw_message> msgs);
 };
@@ -52,7 +56,7 @@ public:
 // Handle messages from the iopub channel
 class IOPubHandler : public Handler {
 public:
-  IOPubHandler(std::string const &hmac_key, bbq::BBQueue<msg::sptr> &queue)
+  IOPubHandler(std::string const &hmac_key, Messagequeue &queue)
       : Handler(hmac_key, queue) {}
   void operator()(std::vector<msg::raw_message> msgs);
 };
@@ -60,7 +64,7 @@ public:
 // Handler message from the control channel
 class ControlHandler : public Handler {
 public:
-  ControlHandler(std::string const &hmac_key, bbq::BBQueue<msg::sptr> &queue)
+  ControlHandler(std::string const &hmac_key, Messagequeue &queue)
       : Handler(hmac_key, queue) {}
   void operator()(std::vector<msg::raw_message> msgs);
 };
@@ -68,7 +72,7 @@ public:
 // Handle messages from the stdin channel
 class StdinHandler : public Handler {
 public:
-  StdinHandler(std::string const &hmac_key, bbq::BBQueue<msg::sptr> &queue)
+  StdinHandler(std::string const &hmac_key, Messagequeue &queue)
       : Handler(hmac_key, queue) {}
   void operator()(std::vector<msg::raw_message> msgs);
 };

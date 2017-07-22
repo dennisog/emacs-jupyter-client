@@ -10,6 +10,7 @@ extern "C" {
 #include <emacs-module.h>
 }
 
+#include "Handlers.hpp"
 #include "JupyterClient.hpp"
 
 #include <cstring>
@@ -35,6 +36,9 @@ emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
 emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
                              emacs_value args[], void *data) noexcept;
 
+// get the contents of the message queue
+emacs_value ejc_flush_queue(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
+                            void *data) noexcept;
 } // extern "C"
 
 //
@@ -190,9 +194,15 @@ inline emacs_value plist_add(emacs_env *env, std::string const &key,
   return env->funcall(env, Fplist_put, 2, args);
 }
 
-// convert a JSON object to an Emacs plist
-emacs_value json2lisp(emacs_env *env, Json::Value &dict);
+// cons, but in C
+inline emacs_value cons(emacs_env *env, emacs_value x, emacs_value y) {
+  auto Fcons = env->intern(env, "cons");
+  emacs_value args[] = {x, y};
+  return env->funcall(env, Fcons, 2, args);
+}
 
+// convert a JSON object to an Emacs plist
+emacs_value json2lisp(emacs_env *env, Json::Value const &object);
 } // namespace ejc
 
 #endif // e34f90230d2f45b894e32a381e88eddc0c6ee3a4

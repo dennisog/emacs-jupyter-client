@@ -23,31 +23,45 @@ bool BBSocket::pollout(long timeout) { return poll_(ZMQ_POLLOUT, timeout); }
 
 bool BBSocket::poll_(int flags, long timeout) {
   pi_.events = flags;
-  auto ret = zmq::poll(&pi_, 1, timeout);
-  if (ret != 0) {
-    return (pi_.revents & flags) == flags ? true : false;
-  } else {
+  try {
+    auto ret = zmq::poll(&pi_, 1, timeout);
+    if (ret != 0) {
+      return (pi_.revents & flags) == flags ? true : false;
+    } else {
+      return false;
+    }
+  } catch (zmq::error_t &ex) {
+    if (ex.num() != EINTR)
+      throw ex;
     return false;
   }
 }
 
 // blocking i/o
-bool BBSocket::send(raw_message &data) {
+bool BBSocket::send(raw_message &data, int flags) {
   // zmq::message_t msg(data.data(), data.size(), NULL);
   zmq::message_t msg(data.size());
   memcpy(msg.data(), data.data(), data.size());
-  return sock_.send(msg);
+  bool sent = false;
+  while (!sent) {
+    try {
+      sent = sock_.send(msg, flags);
+    } catch (zmq::error_t &ex) {
+      if (ex.num() != EINTR)
+        throw ex;
+      sent = false;
+    }
+  }
+  return sent;
 }
 
 void BBSocket::send_multipart(std::vector<raw_message> &data) {
   for (size_t i = 0; i < data.size(); ++i) {
     auto &buf = data[i];
-    zmq::message_t msg(buf.size());
-    memcpy(msg.data(), buf.data(), buf.size());
     if (i == data.size() - 1) {
-      sock_.send(msg, 0);
+      send(buf, 0);
     } else {
-      sock_.send(msg, ZMQ_SNDMORE);
+      send(buf, ZMQ_SNDMORE);
     }
   }
 }

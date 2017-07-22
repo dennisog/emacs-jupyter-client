@@ -130,13 +130,15 @@ void print_message_received(std::vector<raw_message> msgs) {
   of.close();
 }
 
-KernelManager::KernelManager(
-    ConnectionParams &cparams, unsigned int nthreads,
-    std::function<void(std::vector<raw_message>)> shell_handler)
+KernelManager::KernelManager(ConnectionParams &cparams, unsigned int nthreads,
+                             handlers::handler control_handler,
+                             handlers::handler shell_handler,
+                             handlers::handler stdin_handler,
+                             handlers::handler iopub_handler)
     : ctx_(zmq::context_t(nthreads)), cparams_(cparams),
-      control_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      control_chan_(ctx_, ZMQ_DEALER, control_handler),
       shell_chan_(ctx_, ZMQ_DEALER, shell_handler),
-      stdin_chan_(ctx_, ZMQ_DEALER, print_message_received),
+      stdin_chan_(ctx_, ZMQ_DEALER, stdin_handler),
       // FIXME timeout and interval values are hardcoded rn
       hb_chan_(ctx_, ZMQ_DEALER, std::chrono::milliseconds(500),
                std::chrono::milliseconds(3000),
@@ -144,7 +146,7 @@ KernelManager::KernelManager(
                  std::lock_guard<std::mutex> lock(hbmtx_);
                  alive_ = a;
                }),
-      iopub_chan_(ctx_, ZMQ_PUB, print_message_received), alive_(false) {}
+      iopub_chan_(ctx_, ZMQ_PUB, iopub_handler), alive_(false) {}
 
 KernelManager::~KernelManager() {
   if (control_chan_.running())
@@ -233,7 +235,9 @@ JupyterClient::JupyterClient(KernelSpec const &kspec,
     : sessionid_(msg::uuidgen()), kspec_(kspec),
       cparams_(parse_connection_file_(connection_file)), queue_(100),
       hmac_(cparams_.key), shell_handler_(cparams_.key, queue_),
-      km_(cparams_, 1, [this](auto msgs) { shell_handler_(msgs); }) {}
+      km_(cparams_, 1, print_message_received,
+          [this](auto msgs) { shell_handler_(msgs); }, print_message_received,
+          print_message_received) {}
 
 //
 // This is a quick hack to get a finalizer in the emacs C interface
