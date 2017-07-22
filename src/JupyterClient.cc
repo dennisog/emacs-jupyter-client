@@ -57,7 +57,7 @@ void Channel::run() {
     } else {
       std::lock_guard<std::mutex> lock(sockmtx_);
       // FIXME hardcoded polling timeout
-      if (sock_.pollin(10)) {
+      if (sock_.pollin(5)) {
         auto msgs = sock_.recv_multipart();
         rx_handler_(msgs);
       }

@@ -120,30 +120,10 @@ emacs_value ejc_flush_queue(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
                             void *data) noexcept {
   try {
     auto client = ejc::get_client(env, args[0]);
-
     auto lisp_msg = ejc::nil(env);
-    // this works
-    // auto t1 = ejc::make_string(env, "lalala");
-    // auto t2 = ejc::make_string(env, "lululu");
-    // return ejc::cons(env, t1, t2);
-    // this works
-    // lisp_msg = ejc::cons(env, t1, lisp_msg);
-    // lisp_msg = ejc::cons(env, t2, lisp_msg);
-    // this works as well
-    // msg.append("lala");
-    // msg.append("lele");
-    // return ejc::json2lisp(env, msg);
-    // while (client->queue().tryPop(msg)) {
-    //   lisp_msg = ejc::cons(env, ejc::json2lisp(env, msg), lisp_msg);
-    // }
-    bool more = true;
-    while (more) {
-      Json::Value msg;
-      more = client->queue().tryPop(msg);
-      if (!more)
-        break;
+    Json::Value msg;
+    while (client->queue().tryPop(msg))
       lisp_msg = ejc::cons(env, ejc::json2lisp(env, msg), lisp_msg);
-    }
     return lisp_msg;
   } catch (std::exception &e) {
     return env->make_string(env, e.what(), std::strlen(e.what()));
@@ -269,7 +249,7 @@ emacs_value json2lisp(emacs_env *env, Json::Value const &object) {
     return ejc::make_string(env, object.asString());
   case Json::arrayValue: {
     auto list = ejc::nil(env);
-    for (Json::ArrayIndex i = 0; i < object.size(); ++i)
+    for (int i = object.size() - 1; i >= 0; --i)
       list = ejc::cons(env, json2lisp(env, object[i]), list);
     return list;
   }
@@ -278,16 +258,12 @@ emacs_value json2lisp(emacs_env *env, Json::Value const &object) {
       return ejc::nil(env);
     } else {
       auto keys = object.getMemberNames();
-      // We can also do an alist with the cons function
       auto list = ejc::nil(env);
       for (auto const &key : keys)
         list = ejc::cons(env, ejc::cons(env, env->intern(env, key.c_str()),
                                         json2lisp(env, object[key])),
                          list);
-      // auto plist = init_plist(env, keys[0], json2lisp(env, object[keys[0]]));
-      // for (size_t i = 1; i < keys.size(); ++i)
-      //   plist = plist_add(env, keys[i], json2lisp(env, object[keys[i]]));
-      // return plist;
+      return list;
     }
   default:
     return ejc::nil(env);
