@@ -46,7 +46,7 @@ int main(int argc, const char *argv[]) {
   // get info about the connection
   std::cout << "parsing connection file" << std::endl;
   std::string connection_file_name(argv[1]);
-  auto cp = ejc::KernelManager::parse_connection_file_(connection_file_name);
+  auto cp = ejc::JupyterClient::parse_connection_file_(connection_file_name);
 
   // connect the sockets
   std::cout << "connecting" << std::endl;

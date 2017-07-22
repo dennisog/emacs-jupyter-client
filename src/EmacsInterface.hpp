@@ -58,11 +58,11 @@ namespace ejc {
 // emacs booleans
 inline emacs_value nil(emacs_env *env) { return env->intern(env, "nil"); }
 inline emacs_value t(emacs_env *env) { return env->intern(env, "t"); }
-emacs_value make_string(emacs_env *env, std::string const &str) {
+inline emacs_value make_string(emacs_env *env, std::string const &str) {
   return env->make_string(env, str.data(), str.length());
 }
 // get a string from an emacs_value
-std::string get_string(emacs_env *env, emacs_value val) {
+inline std::string get_string(emacs_env *env, emacs_value val) {
   ptrdiff_t size = 0;
   env->copy_string_contents(env, val, NULL, &size);
   std::vector<char> buf(size);
@@ -111,7 +111,7 @@ template <typename T>
 inline emacs_value init_plist(emacs_env *env, std::string const &key, T val);
 template <>
 inline emacs_value init_plist(emacs_env *env, std::string const &key,
-                              std::string const &val) {
+                              std::string val) {
   auto Flist = env->intern(env, "list");
   auto Skey = env->intern(env, key.c_str());
   auto Vval = env->make_string(env, val.data(), val.length());
@@ -141,7 +141,7 @@ template <typename T>
 inline emacs_value plist_add(emacs_env *env, std::string const &key, T val);
 template <>
 inline emacs_value plist_add(emacs_env *env, std::string const &key,
-                             std::string const &val) {
+                             std::string val) {
   auto Fplist_put = env->intern(env, "plist_put");
   auto Skey = env->intern(env, key.c_str());
   auto Vval = env->make_string(env, val.data(), val.length());
@@ -162,6 +162,14 @@ inline emacs_value plist_add(emacs_env *env, std::string const &key,
   auto Fplist_put = env->intern(env, "plist_put");
   auto Skey = env->intern(env, key.c_str());
   auto Vval = env->make_float(env, val);
+  emacs_value args[] = {Skey, Vval};
+  return env->funcall(env, Fplist_put, 2, args);
+}
+template <>
+inline emacs_value plist_add(emacs_env *env, std::string const &key, bool val) {
+  auto Fplist_put = env->intern(env, "plist_put");
+  auto Skey = env->intern(env, key.c_str());
+  auto Vval = val ? ejc::t(env) : ejc::nil(env);
   emacs_value args[] = {Skey, Vval};
   return env->funcall(env, Fplist_put, 2, args);
 }

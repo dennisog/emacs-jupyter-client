@@ -126,14 +126,7 @@ bool HMAC_SHA256::verify(vector<raw_message>::iterator start,
   // verify the signature
   err = gcry_mac_verify(handle_, static_cast<void *>(signature.data()),
                         signature.size());
-  switch (err) {
-  case GPG_ERR_CHECKSUM:
-    return false;
-  case 0:
-    return true;
-  default:
-    throw std::runtime_error("HMAC_SHA256: Errors verifying checksum");
-  }
+  return err == GPG_ERR_CHECKSUM ? false : true;
 }
 
 bool HMAC_SHA256::hexverify(vector<raw_message>::iterator start,

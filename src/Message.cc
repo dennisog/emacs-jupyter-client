@@ -110,44 +110,12 @@ raw_message ExecuteRequest::serialize() {
   return json2buf(val);
 }
 
-//
-// execute_reply
-//
-ExecuteReply::ExecuteReply(Json::Value &json)
-    : status([](auto j) {
-        if (j.compare("ok")) {
-          return Status::ok;
-        } else if (j.compare("error")) {
-          return Status::error;
-        } else if (j.compare("abort")) {
-          return Status::abort;
-        } else {
-          throw std::runtime_error(
-              "invalid content: \"status\" field of execution reply.");
-        }
-      }(json["status"].asString())),
-      execution_count(json["status"].asInt()) {
-  if (json.isMember("user_expressions")) {
-    auto uexprs_keys = json.getMemberNames();
-    for (auto const &key : uexprs_keys) {
-      user_expressions->emplace(key, json[key].asString());
-    }
-  }
-}
-
-// FIXME there is really no need for the Status enum here
-emacs_value ExecuteReply::toLisp(emacs_env *env) {
-  auto plist = ejc::init_plist(env, ":status", [](auto s) {
-    switch (s) {
-    case Status::ok:
-      return "ok";
-    case Status::error:
-      return "error";
-    case Status::abort:
-      return "abort";
-    }
-  }(status));
-  plist = ejc::plist_add(env, ":excution_count", execution_count);
+emacs_value ExecuteRequest::toLisp(emacs_env *env) {
+  auto plist = ejc::init_plist(env, ":code", code);
+  plist = ejc::plist_add(env, ":silent", silent);
+  plist = ejc::plist_add(env, ":store_history", store_history);
+  plist = ejc::plist_add(env, ":allow_stdin", allow_stdin);
+  plist = ejc::plist_add(env, ":stop_on_error", stop_on_error);
   if (user_expressions != nullptr) {
     auto it = begin(*user_expressions);
     auto ue = ejc::init_plist(env, it->first, it->second);
@@ -158,7 +126,77 @@ emacs_value ExecuteReply::toLisp(emacs_env *env) {
   return plist;
 }
 
-raw_message ExecuteReply::serialize() { return raw_message(); }
+//
+// execute_reply
+//
+ExecuteReply::ExecuteReply(Json::Value &json)
+    : status([](auto j) {
+        if (j.compare("ok") == 0) {
+          return Status::ok;
+        } else if (j.compare("error") == 0) {
+          return Status::error;
+        } else if (j.compare("abort") == 0) {
+          return Status::abort;
+        } else {
+          throw std::runtime_error(
+              "invalid content: \"status\" field of execution reply.");
+        }
+      }(json["status"].asString())),
+      execution_count(json["execution_count"].asInt()) {
+  if (json.isMember("user_expressions")) {
+    auto uexprs = json["user_expressions"];
+    auto uexprs_keys = uexprs.getMemberNames();
+    for (auto const &key : uexprs_keys) {
+      user_expressions->emplace(key, uexprs[key].asString());
+    }
+  }
+}
+
+raw_message ExecuteReply::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  Json::Value uexpr(Json::ValueType::objectValue);
+  std::string stat([](auto s) {
+    switch (s) {
+    case Status::ok:
+      return "ok";
+    case Status::error:
+      return "error";
+    case Status::abort:
+      return "abort";
+    }
+  }(status));
+  val["status"] = stat;
+  val["execution_count"] = execution_count;
+  if (user_expressions != nullptr)
+    for (auto &e : *user_expressions)
+      uexpr[e.first] = e.second;
+  val["user_expressions"] = uexpr;
+  return json2buf(val);
+}
+
+// FIXME there is really no need for the Status enum here
+emacs_value ExecuteReply::toLisp(emacs_env *env) {
+  std::string stat([](auto s) {
+    switch (s) {
+    case Status::ok:
+      return "ok";
+    case Status::error:
+      return "error";
+    case Status::abort:
+      return "abort";
+    }
+  }(status));
+  auto plist = ejc::init_plist(env, ":status", stat);
+  plist = ejc::plist_add(env, ":excution_count", execution_count);
+  if (user_expressions != nullptr) {
+    auto it = begin(*user_expressions);
+    auto ue = ejc::init_plist(env, it->first, it->second);
+    for (; it != end(*user_expressions); ++it)
+      ue = ejc::plist_add(env, it->first, it->second);
+    plist = ejc::plist_add(env, ":user_expressions", ue);
+  }
+  return plist;
+}
 
 } // namespace msg
 } // namespace ejc

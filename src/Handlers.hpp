@@ -25,8 +25,6 @@ class Handler : private boost::noncopyable {
 public:
   Handler(std::string const &hmac_key, bbq::BBQueue<msg::sptr> &queue);
   virtual void operator()(std::vector<msg::raw_message> msgs) = 0;
-  // FIXME this sucks but oh well
-  void set_key(std::string const &hmac_key);
 
 protected:
   // each handler gets its own HMAC object and JSON parser
@@ -36,6 +34,11 @@ protected:
   bbq::BBQueue<msg::sptr> &queue_;
   // handlers can notify emacs after they have handled a message
   void notify_emacs_();
+  // since every handler has to parse the headers and verify the checksums, we
+  // make this a method of the base class
+  void process_headers_(msg::Message *msg,
+                        std::vector<msg::raw_message>::iterator &it,
+                        std::vector<msg::raw_message>::iterator end);
 };
 
 // Handle messages from the shell channel

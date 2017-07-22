@@ -104,28 +104,24 @@ struct ConnectionParams {
 
 class KernelManager {
 public:
-  KernelManager(std::string const &connection_file, unsigned int nthreads,
+  KernelManager(ConnectionParams &cparams, unsigned int nthreads,
                 std::function<void(std::vector<raw_message>)> shell_handler);
   ~KernelManager();
   void connect();
   bool is_alive();
-  std::string key() { return cparams_.key; }
 
   Channel &control() { return control_chan_; };
   Channel &shell() { return shell_chan_; };
   Channel &stdin() { return stdin_chan_; };
   Channel &heartbeat() { return hb_chan_; };
   Channel &iopub() { return iopub_chan_; };
-  // interpret a connection file
-  static const ConnectionParams parse_connection_file_(std::string const &fn);
 
 private:
   //
   // The connection to the kernel
   //
-  std::string connection_file_name_;
   zmq::context_t ctx_;
-  ConnectionParams cparams_;
+  ConnectionParams &cparams_;
   // channels
   Channel control_chan_;
   Channel shell_chan_;
@@ -157,7 +153,6 @@ public:
   //
   void connect();
   bool alive();
-  boost::uuids::uuid sessionid_;
 
   //
   // client-related
@@ -174,20 +169,26 @@ public:
                                       bool store_history = false,
                                       bool allow_stdin = true,
                                       bool stop_on_error = true);
+  // interpret a connection file
+  static const ConnectionParams parse_connection_file_(std::string const &fn);
 
 private:
+  // every session is unique
+  boost::uuids::uuid sessionid_;
   // Info about the kernel
   KernelSpec kspec_;
+  // connection params
+  ConnectionParams cparams_;
   // we keep a queue of messages for emacs
   bbq::BBQueue<msg::sptr> queue_;
-  //
-  // Handlers
-  //
-  handlers::ShellHandler shell_handler_;
-  // The connection to the kernel
-  KernelManager km_;
   // we need to sign and auth messages
   crypto::HMAC_SHA256 hmac_;
+
+  // Handlers
+  handlers::ShellHandler shell_handler_;
+
+  // The connection to the kernel
+  KernelManager km_;
 
   // serialize a message to a buffer of multipart message parts
   std::vector<raw_message> serialize_(msg::uptr);

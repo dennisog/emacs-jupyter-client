@@ -82,8 +82,8 @@ struct Header {
 // I am not sure we need this
 struct Metadata {
   typedef unique_ptr<Metadata> uptr;
-  virtual raw_message serialize();
-  virtual emacs_value toLisp(emacs_env *env);
+  virtual raw_message serialize() = 0;
+  virtual emacs_value toLisp(emacs_env *env) = 0;
 };
 
 struct Content {
@@ -120,8 +120,8 @@ struct ExecuteReply : public Content {
   int execution_count;
 
   ExecuteReply(Json::Value &json);
-  emacs_value toLisp(emacs_env *env);
   raw_message serialize();
+  emacs_value toLisp(emacs_env *env);
 };
 
 struct Buffers {
