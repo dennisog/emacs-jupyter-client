@@ -135,6 +135,14 @@ inline emacs_value init_plist(emacs_env *env, std::string const &key,
   emacs_value args[] = {Skey, Vval};
   return env->funcall(env, Flist, 2, args);
 }
+template <>
+inline emacs_value init_plist(emacs_env *env, std::string const &key,
+                              emacs_value val) {
+  auto Flist = env->intern(env, "list");
+  auto Skey = env->intern(env, key.c_str());
+  emacs_value args[] = {Skey, val};
+  return env->funcall(env, Flist, 2, args);
+}
 
 // add to a plist
 template <typename T>
@@ -181,6 +189,9 @@ inline emacs_value plist_add(emacs_env *env, std::string const &key,
   emacs_value args[] = {Skey, val};
   return env->funcall(env, Fplist_put, 2, args);
 }
+
+// convert a JSON object to an Emacs plist
+emacs_value json2lisp(emacs_env *env, Json::Value &dict);
 
 } // namespace ejc
 

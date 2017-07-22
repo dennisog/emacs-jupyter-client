@@ -206,3 +206,45 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
   return 0;
 }
 } // extern "C"
+
+namespace ejc {
+
+inline emacs_value cons(emacs_env *env, emacs_value x, emacs_value y) {
+  auto Fcons = env->intern(env, "cons");
+  emacs_value args[] = {x, y};
+  return env->funcall(env, Fcons, 2, args);
+}
+
+emacs_value json2lisp(emacs_env *env, Json::Value const &object) {
+  switch (object.type()) {
+  case Json::nullValue:
+    return ejc::nil(env);
+  case Json::booleanValue:
+    return object.asBool() ? ejc::t(env) : ejc::nil(env);
+  case Json::intValue:
+    return env->make_integer(env, object.asLargestInt());
+  case Json::uintValue:
+    return env->make_integer(env, object.asLargestUInt());
+  case Json::realValue:
+    return env->make_float(env, object.asDouble());
+  case Json::stringValue:
+    return ejc::make_string(env, object.asString());
+  case Json::arrayValue: {
+    auto list = ejc::nil(env);
+    for (auto const &elt : object)
+      list = cons(env, json2lisp(env, elt), list);
+    return list;
+  }
+  case Json::objectValue:
+    if (object.empty()) {
+      return ejc::nil(env);
+    } else {
+      auto keys = object.getMemberNames();
+      auto plist = init_plist(env, keys[0], json2lisp(env, object[keys[0]]));
+      for (size_t i = 1; i < keys.size(); ++i)
+        plist = plist_add(env, keys[i], json2lisp(env, object[keys[i]]));
+      return plist;
+    }
+  }
+}
+} // namespace ejc
