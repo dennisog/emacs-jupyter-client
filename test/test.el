@@ -19,10 +19,9 @@
 
 (ejc/execute-code client "λ = 5")
 
-(prin1-to-string (ejc/flush-queue client))
+(sleep-for 10)
 
-(ejc/flush-queue client)
-
+(ejc/disconnect client)
 
 ;; (let (
 ;;       (nmsgs 1))

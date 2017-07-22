@@ -5,229 +5,15 @@
 
 #include "JupyterClient.hpp"
 
+#include <boost/format.hpp>
+
+#include <exception>
 #include <fstream>
-#include <iostream>
-#include <random>
 
 namespace ejc {
 
-//
-// A communication channel to the Jupyter kernel
-//
-Channel::Channel(zmq::context_t &ctx, int flags,
-                 std::function<void(std::vector<raw_message>)> rx_handler)
-    : rx_handler_(rx_handler), sock_(ctx, flags), running_(false) {}
-
-void Channel::connect(std::string const &endpoint) { sock_.connect(endpoint); }
-
-bool Channel::send(raw_message &data) {
-  std::lock_guard<std::mutex> lock(sockmtx_);
-  return sock_.send(data);
-}
-
-void Channel::send_multipart(std::vector<raw_message> &data) {
-  std::lock_guard<std::mutex> lock(sockmtx_);
-  return sock_.send_multipart(data);
-}
-
-bool Channel::running() {
-  std::lock_guard<std::mutex> lock(loopmtx_);
-  return running_;
-}
-
-void Channel::start() {
-  if (!running()) {
-    running_ = true;
-    rx_thread_ = std::thread([this] { run(); });
-  }
-}
-
-void Channel::stop() {
-  {
-    std::lock_guard<std::mutex> lock(loopmtx_);
-    running_ = false;
-  }
-  rx_thread_.join();
-}
-
-void Channel::run() {
-  while (true) {
-    if (!running()) {
-      break;
-    } else {
-      std::lock_guard<std::mutex> lock(sockmtx_);
-      // FIXME hardcoded polling timeout
-      if (sock_.pollin(5)) {
-        auto msgs = sock_.recv_multipart();
-        rx_handler_(msgs);
-      }
-    }
-  }
-}
-
-// a heartbeat channel is only slightly different from a regular channel
-HBChannel::HBChannel(zmq::context_t &ctx, int flags,
-                     std::chrono::milliseconds timeout,
-                     std::chrono::milliseconds interval,
-                     std::function<void(bool)> notify_manager)
-    : Channel(ctx, flags, [](auto a) {}), timeout_(timeout),
-      interval_(interval), notify_manager_(notify_manager) {}
-
-// send a 'ping' to the kernel, wait for a response and timeout if no response.
-void HBChannel::run_heartbeat_() {
-  using namespace std::chrono;
-  std::mt19937 mt(system_clock::now().time_since_epoch().count());
-  std::uniform_real_distribution<> r(0, 1);
-  auto rand = [&mt, &r] { return r(mt); };
-
-  while (true) {
-    if (!running()) {
-      break;
-    } else {
-      auto start = system_clock::now();
-      sock_.send(ping_);
-      {
-        std::lock_guard<std::mutex> lock(sockmtx_);
-        if (sock_.pollin(timeout_.count())) {
-          auto buf = sock_.recv_multipart();
-          notify_manager_(true);
-        } else {
-          notify_manager_(false);
-        }
-      }
-      auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
-      auto sleepfor = rand() * (interval_ - elapsed);
-      std::this_thread::sleep_for(sleepfor);
-    }
-  }
-}
-
-void HBChannel::start() {
-  if (!running()) {
-    running_ = true;
-    rx_thread_ = std::thread([this] { run_heartbeat_(); });
-  }
-}
-
 // debug dummy handler
-void print_message_received(std::vector<raw_message> msgs) {
-  // dump to file
-  // std::vector<uint8_t> outdelim(100, '0');
-  // std::ofstream of("rx_data", std::ios::app | std::ios::binary);
-  // for (auto const &msg : msgs) {
-  //   of.write((char *)msg.data(), msg.size());
-  // }
-  // of.write((char *)outdelim.data(), outdelim.size());
-  // of.close();
-  Json::CharReaderBuilder builder;
-  builder["collectComments"] = false;
-  auto rd = std::unique_ptr<Json::CharReader>(builder.newCharReader());
-  Json::Value value;
-  std::string str;
-  rd->parse(msgs[5].data(), msgs[5].data() + msgs[5].size(), &value, &str);
-  std::ofstream of("rx_content", std::ios::app);
-  of << value;
-  of.close();
-}
-
-KernelManager::KernelManager(ConnectionParams &cparams, unsigned int nthreads,
-                             handlers::handler control_handler,
-                             handlers::handler shell_handler,
-                             handlers::handler stdin_handler,
-                             handlers::handler iopub_handler)
-    : ctx_(zmq::context_t(nthreads)), cparams_(cparams),
-      control_chan_(ctx_, ZMQ_DEALER, control_handler),
-      shell_chan_(ctx_, ZMQ_DEALER, shell_handler),
-      stdin_chan_(ctx_, ZMQ_DEALER, stdin_handler),
-      // FIXME timeout and interval values are hardcoded rn
-      hb_chan_(ctx_, ZMQ_DEALER, std::chrono::milliseconds(500),
-               std::chrono::milliseconds(3000),
-               [this](auto a) {
-                 std::lock_guard<std::mutex> lock(hbmtx_);
-                 alive_ = a;
-               }),
-      iopub_chan_(ctx_, ZMQ_PUB, iopub_handler), alive_(false) {}
-
-KernelManager::~KernelManager() {
-  if (control_chan_.running())
-    control_chan_.stop();
-  if (shell_chan_.running())
-    shell_chan_.stop();
-  if (stdin_chan_.running())
-    stdin_chan_.stop();
-  if (hb_chan_.running())
-    hb_chan_.stop();
-  if (iopub_chan_.running())
-    iopub_chan_.stop();
-}
-
-const ConnectionParams
-JupyterClient::parse_connection_file_(std::string const &fn) {
-  Json::Value dict;
-  std::ifstream infile(fn);
-  infile >> dict;
-  infile.close();
-  return ConnectionParams(
-      {.ip = boost::asio::ip::address_v4::from_string(dict["ip"].asString()),
-       .key = dict["key"].asString(),
-       .transport = dict["transport"].asString(),
-       .control_port = dict["control_port"].asUInt(),
-       .shell_port = dict["shell_port"].asUInt(),
-       .stdin_port = dict["stdin_port"].asUInt(),
-       .hb_port = dict["hb_port"].asUInt(),
-       .iopub_port = dict["iopub_port"].asUInt(),
-       .signature_scheme = ([](auto in) {
-         if (in.compare("hmac-sha256") == 0) {
-           return ConnectionParams::SignatureScheme::HMAC_SHA256;
-         } else {
-           throw std::runtime_error(
-               (boost::format("Unsupported Signature scheme: %s") % in).str());
-         }
-       })(dict["signature_scheme"].asString())});
-}
-
-// is the kernel alive?
-bool KernelManager::is_alive() {
-  std::lock_guard<std::mutex> lock(hbmtx_);
-  return alive_;
-}
-
-void KernelManager::connect() {
-  using boost::format;
-  int i = 5; // number of tries FIXME hardcoded
-  for (; i > 0; --i) {
-    try {
-      // connct the channels to their endpoints and start them
-      control_chan_.connect((format("%s://%s:%d") % cparams_.transport %
-                             cparams_.ip.to_string() % cparams_.control_port)
-                                .str());
-      shell_chan_.connect((format("%s://%s:%d") % cparams_.transport %
-                           cparams_.ip.to_string() % cparams_.shell_port)
-                              .str());
-      stdin_chan_.connect((format("%s://%s:%d") % cparams_.transport %
-                           cparams_.ip.to_string() % cparams_.stdin_port)
-                              .str());
-      hb_chan_.connect((format("%s://%s:%d") % cparams_.transport %
-                        cparams_.ip.to_string() % cparams_.hb_port)
-                           .str());
-      iopub_chan_.connect((format("%s://%s:%d") % cparams_.transport %
-                           cparams_.ip.to_string() % cparams_.iopub_port)
-                              .str());
-      control_chan_.start();
-      shell_chan_.start();
-      stdin_chan_.start();
-      hb_chan_.start();
-      iopub_chan_.start();
-      break;
-    } catch (std::exception &ex) {
-      // FIXME
-      ;
-    }
-  }
-  if (i <= 0) {
-    throw std::runtime_error("Connection failure.");
-  }
-}
+void print_message_received(std::vector<raw_message> msgs) { return; }
 
 // this sucks, need to redo initialization
 JupyterClient::JupyterClient(KernelSpec const &kspec,
@@ -235,9 +21,11 @@ JupyterClient::JupyterClient(KernelSpec const &kspec,
     : sessionid_(msg::uuidgen()), kspec_(kspec),
       cparams_(parse_connection_file_(connection_file)), queue_(100),
       hmac_(cparams_.key), shell_handler_(cparams_.key, queue_),
+      iopub_handler_(cparams_.key, queue_,
+                     [this](auto s) { manager().status(s); }),
       km_(cparams_, 1, print_message_received,
           [this](auto msgs) { shell_handler_(msgs); }, print_message_received,
-          print_message_received) {}
+          [this](auto msgs) { iopub_handler_(msgs); }) {}
 
 //
 // This is a quick hack to get a finalizer in the emacs C interface
@@ -250,7 +38,7 @@ void JupyterClient::del(void *client) noexcept {
 // Connection
 //
 void JupyterClient::connect() { km_.connect(); }
-bool JupyterClient::alive() { return km_.is_alive(); }
+bool JupyterClient::alive() { return km_.alive(); }
 
 //
 // client stuff
@@ -336,6 +124,31 @@ std::vector<raw_message> JupyterClient::serialize_(msg::uptr m) {
     for (auto &buf : m->buffers->data)
       msgs.push_back(std::move(buf));
   return msgs;
+}
+
+const ConnectionParams
+JupyterClient::parse_connection_file_(std::string const &fn) {
+  Json::Value dict;
+  std::ifstream infile(fn);
+  infile >> dict;
+  infile.close();
+  return ConnectionParams(
+      {.ip = boost::asio::ip::address_v4::from_string(dict["ip"].asString()),
+       .key = dict["key"].asString(),
+       .transport = dict["transport"].asString(),
+       .control_port = dict["control_port"].asUInt(),
+       .shell_port = dict["shell_port"].asUInt(),
+       .stdin_port = dict["stdin_port"].asUInt(),
+       .hb_port = dict["hb_port"].asUInt(),
+       .iopub_port = dict["iopub_port"].asUInt(),
+       .signature_scheme = ([](auto in) {
+         if (in.compare("hmac-sha256") == 0) {
+           return ConnectionParams::SignatureScheme::HMAC_SHA256;
+         } else {
+           throw std::runtime_error(
+               (boost::format("Unsupported Signature scheme: %s") % in).str());
+         }
+       })(dict["signature_scheme"].asString())});
 }
 
 } // namespace ejc

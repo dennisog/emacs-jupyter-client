@@ -6,8 +6,8 @@
 #ifndef e2877d8d75687c10978ce99d99a38100c48fd50f
 #define e2877d8d75687c10978ce99d99a38100c48fd50f
 
-#include "BBQueue.hpp"
 #include "Crypto.hpp"
+#include "KernelManager.hpp"
 #include "Message.hpp"
 
 #include <csignal>
@@ -18,10 +18,6 @@
 
 namespace ejc {
 namespace handlers {
-
-// types be getting too long...
-typedef std::function<void(std::vector<msg::raw_message>)> handler;
-typedef bbq::BBQueue<Json::Value> Messagequeue;
 
 //
 // Handler base class: commonalities between all handlers
@@ -56,9 +52,13 @@ public:
 // Handle messages from the iopub channel
 class IOPubHandler : public Handler {
 public:
-  IOPubHandler(std::string const &hmac_key, Messagequeue &queue)
-      : Handler(hmac_key, queue) {}
+  IOPubHandler(std::string const &hmac_key, Messagequeue &queue,
+               std::function<void(KernelManager::Status)> update_status)
+      : Handler(hmac_key, queue), update_status_(update_status) {}
   void operator()(std::vector<msg::raw_message> msgs);
+
+private:
+  std::function<void(KernelManager::Status)> update_status_;
 };
 
 // Handler message from the control channel

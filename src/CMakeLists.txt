@@ -4,6 +4,8 @@
 set(SRCFILES
   "EmacsInterface.cc"
   "JupyterClient.cc"
+  "KernelManager.cc"
+  "Channels.cc"
   "BBSocket.cc"
   "Message.cc"
   "Crypto.cc"

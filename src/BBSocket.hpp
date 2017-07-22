@@ -31,6 +31,8 @@ public:
   bool send(raw_message &data, int flags = 0);
   void send_multipart(std::vector<raw_message> &data);
   std::vector<raw_message> recv_multipart();
+  // get a ref to the underlying socket for getsockopt or setsockopt
+  zmq::socket_t &get() { return sock_; };
 
 private:
   bool poll_(int flags, long timeout);

@@ -4,6 +4,7 @@
 // Copyright (c) 2017 Dennis Ogbe
 
 #include "Handlers.hpp"
+#include "Message.hpp"
 
 namespace ejc {
 namespace handlers {
@@ -51,8 +52,8 @@ Handler::process_headers_(std::vector<msg::raw_message>::iterator &it,
   ++it;
   parser_->parse(it->data(), it->data() + it->size(), &phdr_json, NULL);
   Json::Value out;
-  out.append(hdr_json);
-  out.append(phdr_json);
+  out["header"] = hdr_json;
+  out["parent_header"] = phdr_json;
   return out;
 }
 
@@ -67,16 +68,56 @@ void ShellHandler::operator()(std::vector<msg::raw_message> msgs) {
     Json::Value metadata;
     ++it;
     parser_->parse(it->data(), it->data() + it->size(), &metadata, NULL);
-    msg.append(metadata);
+    msg["metadata"] = metadata;
     // get the content
     Json::Value content;
     ++it;
     parser_->parse(it->data(), it->data() + it->size(), &content, NULL);
-    msg.append(content);
+    msg["content"] = content;
     // we are done; push the JSON array on the queue and tell Emacs we got
     // something
     queue_.push(msg);
     notify_emacs_();
+  } catch (std::exception &ex) {
+    return;
+  }
+}
+
+// Handle messages from the iopub channel
+void IOPubHandler::operator()(std::vector<msg::raw_message> msgs) {
+  try {
+    auto it = begin(msgs);
+    auto msg = process_headers_(it, end(msgs));
+    // get any metadata
+    Json::Value metadata;
+    ++it;
+    parser_->parse(it->data(), it->data() + it->size(), &metadata, NULL);
+    msg["metadata"] = metadata;
+    // get the content
+    Json::Value content;
+    ++it;
+    parser_->parse(it->data(), it->data() + it->size(), &content, NULL);
+    msg["content"] = content;
+    // if the message is a status update, we change the kernel status. if not,
+    // we pass it on to the queue.
+    auto hdr = msg::Header(msg["header"]);
+    if (hdr.msg_type.compare("status") == 0) {
+      update_status_([](auto s) {
+        if (s.compare("busy") == 0) {
+          return KernelManager::Status::Busy;
+        } else if (s.compare("idle") == 0) {
+          return KernelManager::Status::Idle;
+        } else if (s.compare("starting") == 0) {
+          return KernelManager::Status::Starting;
+        } else {
+          throw std::runtime_error("Invalid status message");
+        }
+      }(content["execution_state"].asString()));
+      return;
+    } else {
+      queue_.push(msg);
+      notify_emacs_();
+    }
   } catch (std::exception &ex) {
     return;
   }

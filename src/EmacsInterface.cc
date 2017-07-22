@@ -57,7 +57,7 @@ emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
                              emacs_value args[], void *data) noexcept {
   try {
     auto client = ejc::get_client(env, args[0]);
-    return client->alive() ? ejc::t(env) : ejc::nil(env);
+    return client->manager().alive() ? ejc::t(env) : ejc::nil(env);
   } catch (std::exception &e) {
     return env->make_string(env, e.what(), std::strlen(e.what()));
   }
@@ -68,7 +68,7 @@ emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
                              emacs_value args[], void *data) noexcept {
   try {
     auto client = ejc::get_client(env, args[0]);
-    if (!client->alive()) {
+    if (!client->manager().alive()) {
       return ejc::make_string(env, "Execute: Kernel is dead.");
     }
     auto code = ejc::get_string(env, args[1]);
