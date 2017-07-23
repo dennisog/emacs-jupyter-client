@@ -38,44 +38,58 @@ public:
   static void del(void *client) noexcept;
 
   //
-  // connection-related
+  // refs
   //
-  void connect();
-  bool alive();
+  Messagequeue &queue() { return queue_; }
+  KernelManager &manager() { return km_; }
 
   //
-  // client-related
+  // messages
+  // all messages return the mesg_id
   //
-
-  // send an execute request to the kernel. returns the msg_id of the message
-  // created.
   const std::string execute_code(std::string const &code, bool silent = false,
                                  bool store_history = false,
                                  bool allow_stdin = true,
                                  bool stop_on_error = true);
+
   const std::string execute_user_expr(msg::usr_exprs user_expressions,
                                       bool silent = false,
                                       bool store_history = false,
                                       bool allow_stdin = true,
                                       bool stop_on_error = true);
+
+  // const std::string inspect_request(std::string const &code, int cursor_pos,
+  //                                   int detail_level);
+
+  // const std::string complete_request(std::string const &code, int
+  // cursor_pos);
+
+  // const std::string history_request(bool output, bool raw,
+  //                                   std::string const &hist_access_type,
+  //                                   int session, int start, int stop, int n,
+  //                                   std::string const &pattern, bool unique);
+
+  // const std::string is_complete_request(std::string const &code);
+
+  // const std::string kernel_info_request();
+
+  // const std::string shutdown_request(bool restart);
+
+  // const std::string input_reply(string const &value);
+
+  // template<typename T>
+  // const std::string send()
+
   // interpret a connection file
   static const ConnectionParams parse_connection_file_(std::string const &fn);
 
-  // get the queue to empty it
-  Messagequeue &queue() { return queue_; }
-  // get a ref to the kernel manager
-  KernelManager &manager() { return km_; }
-
 private:
-  // every session is unique
   boost::uuids::uuid sessionid_;
-  // Info about the kernel
+
   KernelSpec kspec_;
-  // connection params
   ConnectionParams cparams_;
-  // we keep a queue of messages for emacs
+
   Messagequeue queue_;
-  // we need to sign and auth messages
   crypto::HMAC_SHA256 hmac_;
 
   // Handlers

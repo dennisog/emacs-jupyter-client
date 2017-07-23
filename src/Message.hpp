@@ -64,6 +64,12 @@ extern ISO8601 now;
 // constants
 extern const raw_message msg_delim;
 
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
+typedef unordered_map<string, string> usr_exprs;
+
+//
+// header
+//
 struct Header {
   typedef unique_ptr<Header> uptr;
   string msg_id;
@@ -76,28 +82,39 @@ struct Header {
   Header(string msg_type, string username, uuid sessionid);
   Header(Json::Value &json);
   raw_message serialize();
-  emacs_value toLisp(emacs_env *env);
 };
 
-// I am not sure we need this
+//
+// small interfaces for metadata, content, & buffers
+//
 struct Metadata {
   typedef unique_ptr<Metadata> uptr;
   virtual raw_message serialize() = 0;
-  virtual emacs_value toLisp(emacs_env *env) = 0;
 };
-
 struct Content {
   typedef unique_ptr<Content> uptr;
   virtual raw_message serialize() = 0;
-  virtual emacs_value toLisp(emacs_env *env) = 0;
+  virtual const string msg_type() = 0;
+};
+struct Buffers {
+  typedef unique_ptr<Buffers> uptr;
+  vector<raw_message> data;
 };
 
-// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
+//
+// Messages on shell and control channel
+//
+// Each message has a corresponding *_reply method which does not matter to us
+// here since we pass all replies as-is to emacs unless a handler consumes them.
+//
 
-typedef unordered_map<string, string> usr_exprs;
-
+//
+// execute_request
+//
 struct ExecuteRequest : public Content {
   typedef unique_ptr<ExecuteRequest> uptr;
+  const string msg_type() { return "execute_request"; }
+
   string code;
   bool silent;
   bool store_history;
@@ -109,34 +126,131 @@ struct ExecuteRequest : public Content {
                  unique_ptr<usr_exprs> user_expressions, bool allow_stdin,
                  bool stop_on_error);
   raw_message serialize();
-  emacs_value toLisp(emacs_env *env);
 };
 
-struct ExecuteReply : public Content {
-  typedef unique_ptr<ExecuteReply> uptr;
-  enum class Status { ok, error, abort };
-  Status status;
-  unique_ptr<usr_exprs> user_expressions;
-  int execution_count;
+//
+// inspect_request
+//
+struct InspectRequest : public Content {
+  typedef unique_ptr<InspectRequest> uptr;
+  const string msg_type() { return "inspect_request"; }
 
-  ExecuteReply(Json::Value &json);
+  string code;
+  int cursor_pos;
+  int detail_level;
+
+  InspectRequest(string const &code, int cursor_pos, int detail_level);
   raw_message serialize();
-  emacs_value toLisp(emacs_env *env);
 };
 
-struct Buffers {
-  typedef unique_ptr<Buffers> uptr;
-  vector<raw_message> data;
+//
+// complete_request
+//
+struct CompleteRequest : public Content {
+  typedef unique_ptr<CompleteRequest> uptr;
+  const string msg_type() { return "complete_request"; }
+
+  string code;
+  int cursor_pos;
+
+  CompleteRequest(string const &code, int cursor_pos);
+  raw_message serialize();
 };
 
+//
+// history_request
+//
+struct HistoryRequest : public Content {
+  typedef unique_ptr<HistoryRequest> uptr;
+  const string msg_type() { return "history_request"; }
+
+  bool output;
+  bool raw;
+  string hist_access_type;
+  int session;
+  int start;
+  int stop;
+  int n;
+  string pattern;
+  bool unique;
+
+  HistoryRequest(bool output, bool raw, string const &hist_access_type,
+                 int session, int start, int stop, int n, string const &pattern,
+                 bool unique);
+  raw_message serialize();
+};
+
+//
+// is_complete_request
+//
+struct IsCompleteRequest : public Content {
+  typedef unique_ptr<IsCompleteRequest> uptr;
+  const string msg_type() { return "is_complete_request"; }
+
+  string code;
+
+  IsCompleteRequest(string const &code);
+  raw_message serialize();
+};
+
+//
+// kernel_info_request
+//
+struct KernelInfoRequest : public Content {
+  typedef unique_ptr<KernelInfoRequest> uptr;
+  const string msg_type() { return "kernel_info_request"; }
+
+  KernelInfoRequest();
+  raw_message serialize();
+};
+
+//
+// shutdown_request
+//
+struct ShutdownRequest : public Content {
+  typedef unique_ptr<ShutdownRequest> uptr;
+  const string msg_type() { return "shutdown_request"; }
+
+  bool restart;
+
+  ShutdownRequest(bool restart);
+  raw_message serialize();
+};
+
+//
+// Messages on the stdin channel
+//
+// The kernel sends an input_request and expects the client to respond with an
+// input_reply.
+//
+
+//
+// input_reply
+//
+struct InputReply : public Content {
+  typedef unique_ptr<InputReply> uptr;
+  const string msg_type() { return "input_reply"; }
+
+  string value;
+
+  InputReply(string const &value);
+  raw_message serialize();
+};
+
+//
+// Message class contains all of the information. the Jupyter client has ways to
+// serialize this.
+//
 struct Message {
   typedef unique_ptr<Message> uptr;
   typedef shared_ptr<Message> sptr;
+
   unique_ptr<Header> header;
   unique_ptr<Header> parent_header;
   unique_ptr<Metadata> metadata;
   unique_ptr<Content> content;
   unique_ptr<Buffers> buffers;
+
   Message(unique_ptr<Header> header, unique_ptr<Header> parent_header,
           unique_ptr<Metadata> metadata, unique_ptr<Content> content,
           unique_ptr<Buffers> buffers)
@@ -151,6 +265,7 @@ struct Message {
 // convenience typedef
 typedef Message::uptr uptr;
 typedef Message::sptr sptr;
+
 } // namespace msg
 } // namespace ejc
 

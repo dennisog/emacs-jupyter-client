@@ -35,12 +35,6 @@ void JupyterClient::del(void *client) noexcept {
 }
 
 //
-// Connection
-//
-void JupyterClient::connect() { km_.connect(); }
-bool JupyterClient::alive() { return km_.alive(); }
-
-//
 // client stuff
 //
 
@@ -50,13 +44,13 @@ const std::string JupyterClient::execute_code(std::string const &code,
                                               bool allow_stdin,
                                               bool stop_on_error) {
   using std::make_unique;
-  // header
-  auto header =
-      make_unique<msg::Header>("execute_request", "emacs-user", sessionid_);
-  auto id = header->msg_id;
   // content
   msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
       code, silent, store_history, nullptr, allow_stdin, stop_on_error);
+  // header
+  auto header =
+      make_unique<msg::Header>(content->msg_type(), "emacs-user", sessionid_);
+  auto id = header->msg_id;
   // the message
   auto msg = std::make_unique<msg::Message>(std::move(header), nullptr, nullptr,
                                             std::move(content), nullptr);
@@ -72,14 +66,14 @@ JupyterClient::execute_user_expr(msg::usr_exprs user_expressions, bool silent,
                                  bool store_history, bool allow_stdin,
                                  bool stop_on_error) {
   using std::make_unique;
-  // header
-  auto header =
-      make_unique<msg::Header>("execute_request", "emacs-user", sessionid_);
-  auto id = header->msg_id;
   // content
   msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
       "", silent, store_history, make_unique<msg::usr_exprs>(user_expressions),
       allow_stdin, stop_on_error);
+  // header
+  auto header =
+      make_unique<msg::Header>(content->msg_type(), "emacs-user", sessionid_);
+  auto id = header->msg_id;
   // the message
   auto msg = std::make_unique<msg::Message>(std::move(header), nullptr, nullptr,
                                             std::move(content), nullptr);

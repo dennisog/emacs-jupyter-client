@@ -71,19 +71,6 @@ raw_message Header::serialize() {
   return json2buf(val);
 }
 
-// convert the header information to an emacs plist
-emacs_value Header::toLisp(emacs_env *env) {
-  // create a new plist
-  auto plist = ejc::init_plist(env, ":msg_id", msg_id);
-  // write all remaining values to the list
-  plist = ejc::plist_add(env, ":username", username);
-  plist = ejc::plist_add(env, ":session", session);
-  plist = ejc::plist_add(env, ":date", date);
-  plist = ejc::plist_add(env, ":msg_type", msg_type);
-  plist = ejc::plist_add(env, ":version", version);
-  return plist;
-}
-
 //
 // execute_request
 //
@@ -110,92 +97,99 @@ raw_message ExecuteRequest::serialize() {
   return json2buf(val);
 }
 
-emacs_value ExecuteRequest::toLisp(emacs_env *env) {
-  auto plist = ejc::init_plist(env, ":code", code);
-  plist = ejc::plist_add(env, ":silent", silent);
-  plist = ejc::plist_add(env, ":store_history", store_history);
-  plist = ejc::plist_add(env, ":allow_stdin", allow_stdin);
-  plist = ejc::plist_add(env, ":stop_on_error", stop_on_error);
-  if (user_expressions != nullptr) {
-    auto it = begin(*user_expressions);
-    auto ue = ejc::init_plist(env, it->first, it->second);
-    for (; it != end(*user_expressions); ++it)
-      ue = ejc::plist_add(env, it->first, it->second);
-    plist = ejc::plist_add(env, ":user_expressions", ue);
-  }
-  return plist;
-}
-
 //
-// execute_reply
+// inspect_request
 //
-ExecuteReply::ExecuteReply(Json::Value &json)
-    : status([](auto j) {
-        if (j.compare("ok") == 0) {
-          return Status::ok;
-        } else if (j.compare("error") == 0) {
-          return Status::error;
-        } else if (j.compare("abort") == 0) {
-          return Status::abort;
-        } else {
-          throw std::runtime_error(
-              "invalid content: \"status\" field of execution reply.");
-        }
-      }(json["status"].asString())),
-      execution_count(json["execution_count"].asInt()) {
-  if (json.isMember("user_expressions")) {
-    auto uexprs = json["user_expressions"];
-    auto uexprs_keys = uexprs.getMemberNames();
-    for (auto const &key : uexprs_keys) {
-      user_expressions->emplace(key, uexprs[key].asString());
-    }
-  }
-}
+InspectRequest::InspectRequest(string const &code, int cursor_pos,
+                               int detail_level)
+    : code(code), cursor_pos(cursor_pos), detail_level(detail_level) {}
 
-raw_message ExecuteReply::serialize() {
+raw_message InspectRequest::serialize() {
   Json::Value val(Json::ValueType::objectValue);
-  Json::Value uexpr(Json::ValueType::objectValue);
-  std::string stat([](auto s) {
-    switch (s) {
-    case Status::ok:
-      return "ok";
-    case Status::error:
-      return "error";
-    case Status::abort:
-      return "abort";
-    }
-  }(status));
-  val["status"] = stat;
-  val["execution_count"] = execution_count;
-  if (user_expressions != nullptr)
-    for (auto &e : *user_expressions)
-      uexpr[e.first] = e.second;
-  val["user_expressions"] = uexpr;
+  val["code"] = code;
+  val["cursor_pos"] = cursor_pos;
+  val["detail_level"] = detail_level;
   return json2buf(val);
 }
 
-// FIXME there is really no need for the Status enum here
-emacs_value ExecuteReply::toLisp(emacs_env *env) {
-  std::string stat([](auto s) {
-    switch (s) {
-    case Status::ok:
-      return "ok";
-    case Status::error:
-      return "error";
-    case Status::abort:
-      return "abort";
-    }
-  }(status));
-  auto plist = ejc::init_plist(env, ":status", stat);
-  plist = ejc::plist_add(env, ":excution_count", execution_count);
-  if (user_expressions != nullptr) {
-    auto it = begin(*user_expressions);
-    auto ue = ejc::init_plist(env, it->first, it->second);
-    for (; it != end(*user_expressions); ++it)
-      ue = ejc::plist_add(env, it->first, it->second);
-    plist = ejc::plist_add(env, ":user_expressions", ue);
-  }
-  return plist;
+//
+// complete_request
+//
+CompleteRequest::CompleteRequest(string const &code, int cursor_pos)
+    : code(code), cursor_pos(cursor_pos) {}
+
+raw_message CompleteRequest::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  val["code"] = code;
+  val["cursor_pos"] = cursor_pos;
+  return json2buf(val);
+}
+
+//
+// history_request
+//
+HistoryRequest::HistoryRequest(bool output, bool raw,
+                               string const &hist_access_type, int session,
+                               int start, int stop, int n,
+                               string const &pattern, bool unique)
+    : output(output), raw(raw), hist_access_type(hist_access_type),
+      session(session), start(start), stop(stop), n(n), pattern(pattern),
+      unique(unique) {}
+
+raw_message HistoryRequest::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  val["output"] = output;
+  val["raw"] = raw;
+  val["hist_access_type"] = hist_access_type;
+  val["session"] = session;
+  val["start"] = start;
+  val["stop"] = stop;
+  val["n"] = n;
+  val["pattern"] = pattern;
+  val["unique"] = unique;
+  return json2buf(val);
+}
+
+//
+// is_complete_request
+//
+IsCompleteRequest::IsCompleteRequest(string const &code) : code(code) {}
+
+raw_message IsCompleteRequest::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  val["code"] = code;
+  return json2buf(val);
+}
+
+//
+// kernel_info_request
+//
+KernelInfoRequest::KernelInfoRequest() {}
+
+raw_message KernelInfoRequest::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  return json2buf(val);
+}
+
+//
+// shutdown_request
+//
+ShutdownRequest::ShutdownRequest(bool restart) : restart(restart) {}
+
+raw_message ShutdownRequest::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  val["restart"] = restart;
+  return json2buf(val);
+}
+
+//
+// input_reply
+//
+InputReply::InputReply(string const &value) : value(value) {}
+raw_message InputReply::serialize() {
+  Json::Value val(Json::ValueType::objectValue);
+  val["value"] = value;
+  return json2buf(val);
 }
 
 } // namespace msg

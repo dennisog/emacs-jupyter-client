@@ -32,7 +32,7 @@ emacs_value ejc_connect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
     auto fn = ejc::get_string(env, args[1]);
     auto client =
         new ejc::JupyterClient(ejc::KernelSpec(ks[0], ks[1], ks[2]), fn);
-    client->connect();
+    client->manager().connect();
     return env->make_user_ptr(env, ejc::JupyterClient::del,
                               static_cast<void *>(client));
   } catch (std::exception &e) {
@@ -233,6 +233,10 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
 } // extern "C"
 
 namespace ejc {
+//
+// convert a JSON object to a Lisp object. Arrays become lists, dicts become
+// alists
+//
 emacs_value json2lisp(emacs_env *env, Json::Value const &object) {
   switch (object.type()) {
   case Json::nullValue:
