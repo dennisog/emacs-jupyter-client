@@ -38,51 +38,6 @@ void JupyterClient::del(void *client) noexcept {
 // client stuff
 //
 
-// execute some code
-const std::string JupyterClient::execute_code(std::string const &code,
-                                              bool silent, bool store_history,
-                                              bool allow_stdin,
-                                              bool stop_on_error) {
-  using std::make_unique;
-  // content
-  msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
-      code, silent, store_history, nullptr, allow_stdin, stop_on_error);
-  // header
-  auto header =
-      make_unique<msg::Header>(content->msg_type(), "emacs-user", sessionid_);
-  auto id = header->msg_id;
-  // the message
-  auto msg = std::make_unique<msg::Message>(std::move(header), nullptr, nullptr,
-                                            std::move(content), nullptr);
-  // serialize & send
-  auto raw_msgs = serialize_(std::move(msg));
-  km_.shell().send_multipart(raw_msgs);
-  return id;
-}
-
-// not very good
-const std::string
-JupyterClient::execute_user_expr(msg::usr_exprs user_expressions, bool silent,
-                                 bool store_history, bool allow_stdin,
-                                 bool stop_on_error) {
-  using std::make_unique;
-  // content
-  msg::Content::uptr content = make_unique<msg::ExecuteRequest>(
-      "", silent, store_history, make_unique<msg::usr_exprs>(user_expressions),
-      allow_stdin, stop_on_error);
-  // header
-  auto header =
-      make_unique<msg::Header>(content->msg_type(), "emacs-user", sessionid_);
-  auto id = header->msg_id;
-  // the message
-  auto msg = std::make_unique<msg::Message>(std::move(header), nullptr, nullptr,
-                                            std::move(content), nullptr);
-  // serialize & send
-  auto raw_msgs = serialize_(std::move(msg));
-  km_.shell().send_multipart(raw_msgs);
-  return id;
-}
-
 // serialize a message to a buffer of multipart message parts
 std::vector<raw_message> JupyterClient::serialize_(msg::uptr m) {
   std::vector<raw_message> to_send;

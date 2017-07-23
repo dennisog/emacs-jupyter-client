@@ -72,6 +72,7 @@ typedef unordered_map<string, string> usr_exprs;
 //
 struct Header {
   typedef unique_ptr<Header> uptr;
+
   string msg_id;
   string username;
   string session;
@@ -81,7 +82,9 @@ struct Header {
 
   Header(string msg_type, string username, uuid sessionid);
   Header(Json::Value &json);
+  uptr copy(); // dirty, but works
   raw_message serialize();
+  emacs_value toLisp(emacs_env *env);
 };
 
 //

@@ -33,8 +33,8 @@ emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
                              emacs_value args[], void *data) noexcept;
 
 // execute a string of code
-emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
-                             emacs_value args[], void *data) noexcept;
+emacs_value ejc_execute_request(emacs_env *env, ptrdiff_t nargs,
+                                emacs_value args[], void *data) noexcept;
 
 // get the contents of the message queue
 emacs_value ejc_flush_queue(emacs_env *env, ptrdiff_t nargs, emacs_value args[],

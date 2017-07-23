@@ -71,6 +71,33 @@ raw_message Header::serialize() {
   return json2buf(val);
 }
 
+// quick and dirty copy from old header
+Header::uptr Header::copy() { return uptr(new Header(*this)); }
+
+// convert the header to a Lisp object
+emacs_value Header::toLisp(emacs_env *env) {
+  auto list = ejc::nil(env);
+  list = ejc::cons(env, ejc::cons(env, env->intern(env, "msg_id"),
+                                  ejc::make_string(env, msg_id)),
+                   list);
+  list = ejc::cons(env, ejc::cons(env, env->intern(env, "username"),
+                                  ejc::make_string(env, username)),
+                   list);
+  list = ejc::cons(env, ejc::cons(env, env->intern(env, "session"),
+                                  ejc::make_string(env, session)),
+                   list);
+  list = ejc::cons(env, ejc::cons(env, env->intern(env, "date"),
+                                  ejc::make_string(env, date)),
+                   list);
+  list = ejc::cons(env, ejc::cons(env, env->intern(env, "msg_type"),
+                                  ejc::make_string(env, msg_type)),
+                   list);
+  list = ejc::cons(env, ejc::cons(env, env->intern(env, "version"),
+                                  ejc::make_string(env, version)),
+                   list);
+  return list;
+}
+
 //
 // execute_request
 //

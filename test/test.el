@@ -16,7 +16,7 @@
     (message "%s" (prin1-to-string (ejc/flush-queue client)))))
 
 
-(ejc/execute-code client "λ = 5")
+(ejc/execute-request client "λ = 5")
 "a9d497f2-414c-4ec6-ba5a-4ee65996cbe2"
 
 

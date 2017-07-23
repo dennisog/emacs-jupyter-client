@@ -44,41 +44,23 @@ public:
   KernelManager &manager() { return km_; }
 
   //
-  // messages
-  // all messages return the mesg_id
+  // send a message of type T on the channel chan
   //
-  const std::string execute_code(std::string const &code, bool silent = false,
-                                 bool store_history = false,
-                                 bool allow_stdin = true,
-                                 bool stop_on_error = true);
-
-  const std::string execute_user_expr(msg::usr_exprs user_expressions,
-                                      bool silent = false,
-                                      bool store_history = false,
-                                      bool allow_stdin = true,
-                                      bool stop_on_error = true);
-
-  // const std::string inspect_request(std::string const &code, int cursor_pos,
-  //                                   int detail_level);
-
-  // const std::string complete_request(std::string const &code, int
-  // cursor_pos);
-
-  // const std::string history_request(bool output, bool raw,
-  //                                   std::string const &hist_access_type,
-  //                                   int session, int start, int stop, int n,
-  //                                   std::string const &pattern, bool unique);
-
-  // const std::string is_complete_request(std::string const &code);
-
-  // const std::string kernel_info_request();
-
-  // const std::string shutdown_request(bool restart);
-
-  // const std::string input_reply(string const &value);
-
-  // template<typename T>
-  // const std::string send()
+  template <typename T, typename... Args>
+  msg::Header::uptr send(Channel &chan, Args &&... args) {
+    using std::make_unique;
+    msg::Content::uptr content =
+        std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+    auto header =
+        make_unique<msg::Header>(content->msg_type(), "emacs-user", sessionid_);
+    auto ret = header->copy();
+    auto msg = std::make_unique<msg::Message>(
+        std::move(header), nullptr, nullptr, std::move(content), nullptr);
+    // serialize & send
+    auto raw_msgs = serialize_(std::move(msg));
+    chan.send_multipart(raw_msgs);
+    return ret;
+  }
 
   // interpret a connection file
   static const ConnectionParams parse_connection_file_(std::string const &fn);

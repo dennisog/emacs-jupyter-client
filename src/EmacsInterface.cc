@@ -107,9 +107,12 @@ emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
       stop_on_error = env->is_not_nil(env, args[5]);
       break;
     }
-    auto id = client->execute_code(code, silent, store_history, allow_stdin,
-                                   stop_on_error);
-    return ejc::make_string(env, id);
+
+    // send an execute_request on the shell channel
+    auto hdr = client->send<ejc::msg::ExecuteRequest>(
+        client->manager().shell(), code, silent, store_history, nullptr,
+        allow_stdin, stop_on_error);
+    return hdr->toLisp(env);
   } catch (std::exception &e) {
     return env->make_string(env, e.what(), std::strlen(e.what()));
   }
@@ -204,8 +207,8 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
                                    NULL));
 
   // execute a string of code
-  bind_function(env, "ejc/execute-code",
-                env->make_function(env, 2, 6, ejc_execute_code,
+  bind_function(env, "ejc/execute-request",
+                env->make_function(env, 2, 6, ejc_execute_request,
                                    "(ejc/execute-code CLIENT-PTR CODE "
                                    "&optional SILENT STORE-HISTORY ALLOW-STDIN "
                                    "STOP-ON-ERROR)\n\n"
