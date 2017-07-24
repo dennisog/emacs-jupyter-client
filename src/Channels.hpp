@@ -64,7 +64,7 @@ private:
   std::function<void(bool)> notify_manager_;
 };
 
-// the iopub channel holds a PUB socket, so we need to subscribe to all topics
+// the iopub channel holds a SUB socket, so we need to subscribe to all topics
 // before starting
 class IOPubChannel : public Channel {
 public:

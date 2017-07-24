@@ -2,7 +2,6 @@
 ;; implementation
 (add-to-list 'load-path (concat (getenv "HOME") "/build/emacs-jupyter-client/src"))
 (require 'libemacs-jupyter-client)
-(message "%d" (ejc/get-42))
 
 (setq client (ejc/connect ["lala" "lulu" "lele"]
                          ;; (concat (getenv "HOME")
@@ -17,10 +16,6 @@
 
 
 (ejc/execute-request client "λ = 5")
-"a9d497f2-414c-4ec6-ba5a-4ee65996cbe2"
-
-
-
 
 (sleep-for 10)
 

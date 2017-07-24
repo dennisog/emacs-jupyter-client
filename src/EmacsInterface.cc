@@ -298,10 +298,9 @@ void provide(emacs_env *env, const char *feature) {
 int emacs_module_init(struct emacs_runtime *ert) noexcept {
   emacs_env *env = ert->get_environment(ert);
 
-  // the debug function
-  bind_function(
-      env, "ejc/get-42",
-      env->make_function(env, 0, 0, get_42, "Get the Number 42.", NULL));
+  //
+  // client connection
+  //
 
   // create and connect
   bind_function(
@@ -371,15 +370,15 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
                                    NULL));
 
   bind_function(
-      env, "ejc/is_complete-request",
+      env, "ejc/is-complete-request",
       env->make_function(env, 2, 2, ejc_is_complete_request,
-                         "(ejc/is_complete-request CLIENT-PTR CODE)\n\n"
+                         "(ejc/is-complete-request CLIENT-PTR CODE)\n\n"
                          "FIXME: docs.\n",
                          NULL));
 
-  bind_function(env, "ejc/kernel_info-request",
+  bind_function(env, "ejc/kernel-info-request",
                 env->make_function(env, 1, 1, ejc_kernel_info_request,
-                                   "(ejc/kernel_info-request CLIENT-PTR)\n\n"
+                                   "(ejc/kernel-info-request CLIENT-PTR)\n\n"
                                    "FIXME: docs.\n",
                                    NULL));
 
