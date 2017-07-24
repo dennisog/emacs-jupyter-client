@@ -63,9 +63,11 @@ emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
   }
 }
 
-// execute a string of code
-emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
-                             emacs_value args[], void *data) noexcept {
+//
+// client -> kernel messages
+//
+emacs_value ejc_execute_request(emacs_env *env, ptrdiff_t nargs,
+                                emacs_value args[], void *data) noexcept {
   try {
     auto client = ejc::get_client(env, args[0]);
     if (!client->manager().alive()) {
@@ -118,7 +120,133 @@ emacs_value ejc_execute_code(emacs_env *env, ptrdiff_t nargs,
   }
 }
 
+emacs_value ejc_inspect_request(emacs_env *env, ptrdiff_t nargs,
+                                emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto code = ejc::get_string(env, args[1]);
+    auto cursor_pos = env->extract_integer(env, args[2]);
+    auto detail_level = env->extract_integer(env, args[3]);
+    auto hdr = client->send<ejc::msg::InspectRequest>(
+        client->manager().shell(), code, cursor_pos, detail_level);
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+emacs_value ejc_complete_request(emacs_env *env, ptrdiff_t nargs,
+                                 emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto code = ejc::get_string(env, args[1]);
+    auto cursor_pos = env->extract_integer(env, args[2]);
+    auto hdr = client->send<ejc::msg::CompleteRequest>(
+        client->manager().shell(), code, cursor_pos);
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+// FIXME there might be standard arguments here.
+emacs_value ejc_history_request(emacs_env *env, ptrdiff_t nargs,
+                                emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto output = env->is_not_nil(env, args[1]);
+    auto raw = env->is_not_nil(env, args[2]);
+    auto hist_access_type = ejc::get_string(env, args[3]);
+    auto session = env->extract_integer(env, args[4]);
+    auto start = env->extract_integer(env, args[5]);
+    auto stop = env->extract_integer(env, args[6]);
+    auto n = env->extract_integer(env, args[7]);
+    auto pattern = ejc::get_string(env, args[8]);
+    auto unique = env->is_not_nil(env, args[9]);
+    auto hdr = client->send<ejc::msg::HistoryRequest>(
+        client->manager().shell(), output, raw, hist_access_type, session,
+        start, stop, n, pattern, unique);
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+emacs_value ejc_is_complete_request(emacs_env *env, ptrdiff_t nargs,
+                                    emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto code = ejc::get_string(env, args[1]);
+    auto hdr = client->send<ejc::msg::IsCompleteRequest>(
+        client->manager().shell(), code);
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+emacs_value ejc_kernel_info_request(emacs_env *env, ptrdiff_t nargs,
+                                    emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto hdr =
+        client->send<ejc::msg::InspectRequest>(client->manager().shell());
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+emacs_value ejc_shutdown_request(emacs_env *env, ptrdiff_t nargs,
+                                 emacs_value args[], void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto restart = env->is_not_nil(env, args[1]);
+    auto hdr = client->send<ejc::msg::ShutdownRequest>(
+        client->manager().shell(), restart);
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+emacs_value ejc_input_reply(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
+                            void *data) noexcept {
+  try {
+    auto client = ejc::get_client(env, args[0]);
+    if (!client->manager().alive()) {
+      return ejc::make_string(env, "Execute: Kernel is dead.");
+    }
+    auto value = ejc::get_string(env, args[1]);
+    auto hdr =
+        client->send<ejc::msg::InputReply>(client->manager().stdin(), value);
+    return hdr->toLisp(env);
+  } catch (std::exception &e) {
+    return env->make_string(env, e.what(), std::strlen(e.what()));
+  }
+}
+
+//
 // get the contents of the message queue
+//
 emacs_value ejc_flush_queue(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
                             void *data) noexcept {
   try {
@@ -206,10 +334,12 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
                                    "Returns `t' if yes, `nil' if no.",
                                    NULL));
 
-  // execute a string of code
+  //
+  // client -> kernel messages
+  //
   bind_function(env, "ejc/execute-request",
                 env->make_function(env, 2, 6, ejc_execute_request,
-                                   "(ejc/execute-code CLIENT-PTR CODE "
+                                   "(ejc/execute-request CLIENT-PTR CODE "
                                    "&optional SILENT STORE-HISTORY ALLOW-STDIN "
                                    "STOP-ON-ERROR)\n\n"
                                    "Execute CODE using CLIENT-PTR\n\n"
@@ -217,7 +347,58 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
                                    "out the Jupyter message protocol spec.",
                                    NULL));
 
+  bind_function(
+      env, "ejc/inspect-request",
+      env->make_function(
+          env, 4, 4, ejc_inspect_request,
+          "(ejc/inspect-request CLIENT-PTR CODE CURSOR-POS DETAIL-LEVEL)\n\n"
+          "FIXME: docs.\n",
+          NULL));
+
+  bind_function(
+      env, "ejc/complete-request",
+      env->make_function(env, 3, 3, ejc_complete_request,
+                         "(ejc/complete-request CLIENT-PTR CODE CURSOR-POS)\n\n"
+                         "FIXME: docs.\n",
+                         NULL));
+
+  bind_function(env, "ejc/history-request",
+                env->make_function(env, 10, 10, ejc_history_request,
+                                   "(ejc/history-request CLIENT-PTR OUTPUT RAW "
+                                   "HIST-ACCESS-TYPE SESSION START STOP N "
+                                   "PATTERN UNIQUE)\n\n"
+                                   "FIXME: docs.\n",
+                                   NULL));
+
+  bind_function(
+      env, "ejc/is_complete-request",
+      env->make_function(env, 2, 2, ejc_is_complete_request,
+                         "(ejc/is_complete-request CLIENT-PTR CODE)\n\n"
+                         "FIXME: docs.\n",
+                         NULL));
+
+  bind_function(env, "ejc/kernel_info-request",
+                env->make_function(env, 1, 1, ejc_kernel_info_request,
+                                   "(ejc/kernel_info-request CLIENT-PTR)\n\n"
+                                   "FIXME: docs.\n",
+                                   NULL));
+
+  bind_function(
+      env, "ejc/shutdown-request",
+      env->make_function(env, 2, 2, ejc_shutdown_request,
+                         "(ejc/shutdown-request CLIENT-PTR RESTART)\n\n"
+                         "FIXME: docs.\n",
+                         NULL));
+
+  bind_function(env, "ejc/input-reply",
+                env->make_function(env, 2, 2, ejc_input_reply,
+                                   "(ejc/input-reply CLIENT-PTR VALUE)\n\n"
+                                   "FIXME: docs.\n",
+                                   NULL));
+
+  //
   // get the contents of the message queue
+  //
   bind_function(env, "ejc/flush-queue",
                 env->make_function(env, 1, 1, ejc_flush_queue,
                                    "(ejc/flush-queue CLIENT-PTR)\n\n"
@@ -227,6 +408,7 @@ int emacs_module_init(struct emacs_runtime *ert) noexcept {
                                    "contains one message. Dictionaries are "
                                    "implemented as plists.",
                                    NULL));
+
   //
   // export this as a module to emacs
   //

@@ -31,10 +31,32 @@ emacs_value ejc_disconnect(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
 // is the kernel alive?
 emacs_value ejc_kernel_alive(emacs_env *env, ptrdiff_t nargs,
                              emacs_value args[], void *data) noexcept;
-
-// execute a string of code
+//
+// Messages
+//
 emacs_value ejc_execute_request(emacs_env *env, ptrdiff_t nargs,
                                 emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_inspect_request(emacs_env *env, ptrdiff_t nargs,
+                                emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_complete_request(emacs_env *env, ptrdiff_t nargs,
+                                 emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_history_request(emacs_env *env, ptrdiff_t nargs,
+                                emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_is_complete_request(emacs_env *env, ptrdiff_t nargs,
+                                    emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_kernel_info_request(emacs_env *env, ptrdiff_t nargs,
+                                    emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_shutdown_request(emacs_env *env, ptrdiff_t nargs,
+                                 emacs_value args[], void *data) noexcept;
+
+emacs_value ejc_input_reply(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
+                            void *data) noexcept;
 
 // get the contents of the message queue
 emacs_value ejc_flush_queue(emacs_env *env, ptrdiff_t nargs, emacs_value args[],
