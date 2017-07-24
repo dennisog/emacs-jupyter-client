@@ -98,8 +98,8 @@ void IOPubHandler::operator()(std::vector<msg::raw_message> msgs) {
     ++it;
     parser_->parse(it->data(), it->data() + it->size(), &content, NULL);
     msg["content"] = content;
-    // if the message is a status update, we change the kernel status. if not,
-    // we pass it on to the queue.
+    // if the message is a status update, we change the kernel status and send
+    // it on. if not, we pass it on to the queue.
     auto hdr = msg::Header(msg["header"]);
     if (hdr.msg_type.compare("status") == 0) {
       update_status_([](auto s) {
@@ -113,7 +113,8 @@ void IOPubHandler::operator()(std::vector<msg::raw_message> msgs) {
           throw std::runtime_error("Invalid status message");
         }
       }(content["execution_state"].asString()));
-      return;
+      queue_.push(msg);
+      notify_emacs_();
     } else {
       queue_.push(msg);
       notify_emacs_();

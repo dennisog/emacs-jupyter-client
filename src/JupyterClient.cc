@@ -12,9 +12,6 @@
 
 namespace ejc {
 
-// debug dummy handler
-void print_message_received(std::vector<raw_message> msgs) { return; }
-
 // this sucks, need to redo initialization
 JupyterClient::JupyterClient(KernelSpec const &kspec,
                              std::string const &connection_file)
@@ -23,8 +20,11 @@ JupyterClient::JupyterClient(KernelSpec const &kspec,
       hmac_(cparams_.key), shell_handler_(cparams_.key, queue_),
       iopub_handler_(cparams_.key, queue_,
                      [this](auto s) { manager().status(s); }),
-      km_(cparams_, 1, print_message_received,
-          [this](auto msgs) { shell_handler_(msgs); }, print_message_received,
+      control_handler_(cparams_.key, queue_),
+      stdin_handler_(cparams_.key, queue_),
+      km_(cparams_, 1, [this](auto msgs) { control_handler_(msgs); },
+          [this](auto msgs) { shell_handler_(msgs); },
+          [this](auto msgs) { stdin_handler_(msgs); },
           [this](auto msgs) { iopub_handler_(msgs); }) {}
 
 //

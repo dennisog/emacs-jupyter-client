@@ -205,7 +205,7 @@ emacs_value ejc_kernel_info_request(emacs_env *env, ptrdiff_t nargs,
       return ejc::make_string(env, "Execute: Kernel is dead.");
     }
     auto hdr =
-        client->send<ejc::msg::InspectRequest>(client->manager().shell());
+        client->send<ejc::msg::KernelInfoRequest>(client->manager().shell());
     return hdr->toLisp(env);
   } catch (std::exception &e) {
     return env->make_string(env, e.what(), std::strlen(e.what()));
@@ -221,7 +221,7 @@ emacs_value ejc_shutdown_request(emacs_env *env, ptrdiff_t nargs,
     }
     auto restart = env->is_not_nil(env, args[1]);
     auto hdr = client->send<ejc::msg::ShutdownRequest>(
-        client->manager().shell(), restart);
+        client->manager().control(), restart);
     return hdr->toLisp(env);
   } catch (std::exception &e) {
     return env->make_string(env, e.what(), std::strlen(e.what()));

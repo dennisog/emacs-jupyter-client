@@ -77,6 +77,9 @@ private:
   // Handlers
   handlers::ShellHandler shell_handler_;
   handlers::IOPubHandler iopub_handler_;
+  // looks like we don't need specialized handlers on these channels... for now.
+  handlers::ShellHandler control_handler_;
+  handlers::ShellHandler stdin_handler_;
 
   // The connection to the kernel
   KernelManager km_;
