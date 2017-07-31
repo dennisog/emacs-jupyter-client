@@ -40,6 +40,9 @@
 (defvar ejr-kernel "julia-0.6"
   "The currently selected Jupyter kernel.")
 
+(defvar-local ejr--state nil
+  "A hash table holding some state information")
+
 (defun ejr--kernelspecs ()
   "Return a list of the Jupyter Kernels found on this machine."
   (interactive)
@@ -92,10 +95,7 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
   "/tmp/emacs-jupyter-client")
 
 (defun ejr--start-kernel ()
-  "Start the jupyter kernel as Emacs subprocess.
-
-Returns an alist containing the kernelspec and the path to the
-connection file."
+  "Start the jupyter kernel as Emacs subprocess."
   (let* ((key (ejr--uuidgen))
          (connection-file (concat (file-name-as-directory (ejr--tempdir)) "kernel-" key ".json"))
          (port0 56787)
@@ -134,25 +134,55 @@ connection file."
                        :command (append argv nil)
                        :buffer nil
                        :filter nil)))
-        (list (cons 'kernelspec kspec)
-              (cons 'connection-file connection-file))))))
+        (puthash 'kernelspec kspec ejr--state)
+        (puthash 'connection-file connection-file ejr--state)))))
 
-(defun ejr--start-client (client-alist)
-  "Start a client with the data returned from `ejr--start-kernel'.
+(defun ejr--start-client ()
+  "Start a client.  Call this only after the kernel is started."
+  (puthash 'client (ejc/connect (gethash 'kernelspec ejr--state)
+                                (gethash 'connection-file ejr--state))
+           ejr--state)
+  (puthash 'current-msg "" ejr--state)
+  (puthash 'status 'dead ejr--state)
+  (puthash 'connected? t ejr--state))
 
-Returns a state variable"
-  (let ((table (make-hash-table)))
-    (puthash 'client (ejc/connect (alist-get 'kernelspec client-alist)
-                                  (alist-get 'connection-file client-alist))
-             table)
-    ;; this will be taken up by the latest unanswered request
-    (puthash 'current-msg "" table)
-    (puthash 'status 'dead table)
-    table))
+(defun ejr--get-client ()
+  "Get the user_ptr to the jupyter client."
+  (gethash 'client ejr--state))
 
-(defun ejr--stop-client (state)
+(defun ejr--stop-client ()
   "Stop a running client."
-  (ejc/disconnect (gethash 'client state)))
+  (if (not (gethash 'connected? ejr--state))
+      (message "No client for this buffer.")
+    (ejc/disconnect (ejr--get-client))
+    (puthash 'connected? nil ejr--state)))
+
+(defun ejr--flush-queue ()
+  "Get the contents of the client's message queue."
+  (if (not (gethash 'connected? ejr--state))
+      (message "No client for this buffer.")
+    (ejc/flush-queue (ejr--get-client))))
+
+(defun ejr-handler ()
+  "Respond to asyncrounous notifications from the module."
+  (let ((data (ejr--flush-queue)))
+    (dolist (msg data)
+      (let* ((header (alist-get 'header msg))
+             (msg-type (alist-get 'msg_type header)))
+        ;; dispatch a handler
+        (cond ((string= msg-type "execute_reply")
+               (ejr--handle-execute-reply msg)
+               (string= msg-type "status")
+               (ejr--handle-status msg))
+              (t (message "Error: unhandled message of type %s" msg-type)))))))
+
+;;; Handlers
+
+(defun ejr--handle-execute-reply (msg)
+  "Insert the response from the kernel into the REPL buffer.")
+
+(defun ejr--handle-status (msg)
+  "Update the kernel status.")
 
 (provide 'emacs-jupyter-repl)
 ;;; emacs-jupyter-repl ends here

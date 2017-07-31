@@ -5,6 +5,10 @@
 (require 'emacs-jupyter-repl)
 
 
+(define-key special-event-map [sigusr1]
+  (ejr-callback))
+
+
 (setq-local cp (ejr--start-kernel))
 (setq-local state (ejr--start-client cp))
 
