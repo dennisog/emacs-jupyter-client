@@ -52,6 +52,13 @@
 (defvar jupyter-repl-prompt ">> "
   "Prompt string.")
 
+(defvar jupyter-repl-debug nil
+  "If true, we are in debug mode and we log everything to the
+  `jupyter-repl-debug-buffer.'")
+
+(defvar jupyter-repl-debug-buffer "*Jupyter REPL DEBUG*"
+  "Name of the debug buffer.")
+
 ;; Kernel management ----------------------------------------------------------
 
 (defun jupyter-repl--kernelspecs ()
@@ -193,6 +200,11 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
         (let ((data (when (jupyter-repl--connected?)
                       (ejc/flush-queue (jupyter-repl--get-client)))))
           (dolist (msg data)
+            (when jupyter-repl-debug
+              ;; log the received messages to a debug buffer
+              (with-current-buffer (get-buffer-create jupyter-repl-debug-buffer)
+                (insert "\n")
+                (insert (pp-to-string msg))))
             (let* ((header (alist-get 'header msg))
                    (msg-type (alist-get 'msg_type header)))
               ;; dispatch a handler

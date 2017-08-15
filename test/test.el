@@ -5,14 +5,18 @@
 (setq resize-mini-windows nil)
 (windmove-default-keybindings)
 
-(let ((bot (split-window-below)))
-  (with-selected-window bot
-    (pop-to-buffer-same-window "*Messages*")))
-
 ;; load the sources
 (add-to-list 'load-path (concat (getenv "HOME") "/repos/emacs-jupyter-client/lisp"))
 (add-to-list 'load-path (concat (getenv "HOME") "/build/emacs-jupyter-client/src"))
 (require 'jupyter-repl)
+
+;; set up the window
+(setq jupyter-repl-debug t)
+(let ((bot (split-window-below)))
+  (with-selected-window bot
+    (get-buffer-create jupyter-repl-debug-buffer)
+    (pop-to-buffer-same-window jupyter-repl-debug-buffer)
+    (emacs-lisp-mode)))
 
 ;; register the handler
 (define-key special-event-map [sigusr1] 'jupyter-repl-handler)
