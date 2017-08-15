@@ -35,6 +35,7 @@
 
 ;; dependencies
 (require 'json)
+(require 'ansi-color)
 
 ;; Variables ------------------------------------------------------------------
 
@@ -187,37 +188,82 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
 (defun jupyter-repl-handler ()
   "Respond to asyncrounous notifications from the module."
   (interactive)
-  (when (jupyter-repl--connected?)
-    (let ((data (when (jupyter-repl--connected?)
-                  (ejc/flush-queue (jupyter-repl--get-client)))))
-      (dolist (msg data)
-        (let* ((header (alist-get 'header msg))
-               (msg-type (alist-get 'msg_type header)))
-          ;; dispatch a handler
-          (cond ((string= msg-type "execute_reply")
-                 (jupyter-repl--handle-execute-reply msg))
-                ((string= msg-type "execute_input")
-                 (jupyter-repl--handle-execute-input msg))
-                ((string= msg-type "execute_result")
-                 (jupyter-repl--handle-execute-result msg))
-                ((string= msg-type "status")
-                 (jupyter-repl--handle-status msg))
-                ((string= msg-type "stream")
-                 (jupyter-repl--handle-stream msg))
-                (t (message "Error: unhandled message of type %s" msg-type))))))))
+  (with-current-buffer jupyter-repl-buffer-name
+      (when (jupyter-repl--connected?)
+        (let ((data (when (jupyter-repl--connected?)
+                      (ejc/flush-queue (jupyter-repl--get-client)))))
+          (dolist (msg data)
+            (let* ((header (alist-get 'header msg))
+                   (msg-type (alist-get 'msg_type header)))
+              ;; dispatch a handler
+              (cond ((string= msg-type "execute_reply")
+                     (jupyter-repl--handle-exec 'reply msg))
+                    ((string= msg-type "execute_input")
+                     (jupyter-repl--handle-exec 'input msg))
+                    ((string= msg-type "execute_result")
+                     (jupyter-repl--handle-exec 'result msg))
+                    ((string= msg-type "error")
+                     (jupyter-repl--handle-exec 'result msg))
+                    ((string= msg-type "status")
+                     (jupyter-repl--handle-status msg))
+                    ((string= msg-type "stream")
+                     (jupyter-repl--handle-stream msg))
+                    (t (message "Error: unhandled message of type %s" msg-type)))))))))
 
-(defun jupyter-repl--handle-execute-reply (msg)
-  "Insert the response from the kernel into the REPL buffer."
-  (message "JUPYTER-REPL EXEC REPLY: %s" (prin1-to-string msg)))
 
-(defun jupyter-repl--handle-execute-input (msg)
-  "Insert the response from the kernel into the REPL buffer."
-  (message "JUPYTER-REPL EXEC INPUT: %s" (prin1-to-string msg)))
+(defun jupyter-repl--handle-exec (type msg)
+  "Dcoumentation."
+  (unless (jupyter-repl--ready?)
+    (let* ((parent-header (alist-get 'parent_header msg))
+           (parent-id (alist-get 'msg_id parent-header))
+           (waiting-for-header (gethash 'header jupyter-repl--waiting-for))
+           (waiting-for-msg-id (alist-get 'msg_id waiting-for-header)))
+      (when (and (string= parent-id waiting-for-msg-id)
+                 (not (gethash type jupyter-repl--waiting-for)))
+        (puthash type msg jupyter-repl--waiting-for)
+        (jupyter-repl--process-exec)))))
 
-(defun jupyter-repl--handle-execute-result (msg)
-  "Insert the response from the kernel into the REPL buffer."
-  (message "JUPYTER-REPL EXEC RESULT: %s" (prin1-to-string msg)))
+(defun jupyter-repl--process-exec ()
+  "We wait until we have received the execute_reply (shell
+  channel), the execute_input (iopub channel), and the
+  execute_result or error (iopub channel) messages."
+  (let ((reply (gethash 'reply jupyter-repl--waiting-for))
+        (input (gethash 'input jupyter-repl--waiting-for))
+        (result (gethash 'result jupyter-repl--waiting-for)))
+    (when (and reply input result)
+      (let* ((reply-content (alist-get 'content reply))
+             (status (alist-get 'status reply-content)))
+        (if (string= status "ok")
+            ;; Success. Insert the result into the buffer
+            (let* ((result-content (alist-get 'content result))
+                   (data-elements (alist-get 'data result-content)))
+              (dolist (d data-elements)
+                (let ((data-type (car d))
+                      (data (cdr d)))
+                  (cond ((eq data-type 'text/plain)
+                         (insert (jupyter-repl--format-output data))
+                         (puthash 'repl-state 'ready jupyter-repl--state)
+                         (setq-local jupyter-repl--waiting-for nil)
+                         (jupyter-repl--insert-prompt))
+                        (t (error "Unhandled data type %s" (symbol-name data-type)))))))
+          ;; Fail. Insert the traceback into the buffer.
+          (let* ((result-content (alist-get 'content result))
+                 (traceback (with-temp-buffer
+                              (dolist (str (alist-get 'traceback result-content))
+                                (insert str)
+                                (insert "\n"))
+                              (buffer-string))))
+            (insert (jupyter-repl--format-output traceback))
+            (puthash 'repl-state 'ready jupyter-repl--state)
+            (setq-local jupyter-repl--waiting-for nil)
+            (jupyter-repl--insert-prompt)))))))
 
+(defun jupyter-repl--format-output (str)
+  "Documentation."
+  (with-temp-buffer
+    (insert str)
+    (ansi-color-apply-on-region (point-min) (point-max))
+    (buffer-substring (point-min) (point-max))))
 
 (defun jupyter-repl--handle-status (msg)
   "Update the kernel status."
@@ -226,7 +272,16 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
     (puthash 'status exec-state jupyter-repl--state)))
 
 (defun jupyter-repl--handle-stream (msg)
-  (message "JUPYTER-REPL HANDLE STREAM: %s" (prin1-to-string msg)))
+  "Insert the stream MSG into the buffer."
+  (let* ((cmd (jupyter-repl--grab-current-command))
+         (content (alist-get 'content msg))
+         (text (alist-get 'text content)))
+    (goto-char (point-max))
+    (delete-region (point-at-bol) (point-max))
+    (insert (jupyter-repl--format-output text))
+    (jupyter-repl--insert-prompt)
+    (insert cmd)))
+
 
 ;; History --------------------------------------------------------------------
 
@@ -234,21 +289,35 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
 ;; REPL housekeeping ----------------------------------------------------------
 
 (defun jupyter-repl--grab-current-command ()
-  "return the current command on the prompt"
+  "Return the current command on the prompt."
   (re-search-backward jupyter-repl--prompt-regexp)
-  (buffer-substring (match-end 0) (- (point-max) 1)))
+  (buffer-substring (match-end 0) (point-max)))
 
 (defun jupyter-repl--return ()
   "If the kernel is not busy, send the current input."
   (interactive)
-  (when (jupyter-repl--kernel-available?)
-    (insert "\n")
+  (when (and (jupyter-repl--kernel-available?) (jupyter-repl--ready?))
     (save-excursion
       (let ((cmd (jupyter-repl--grab-current-command)))
         (when (>  (length cmd) 0)
-          (puthash 'waiting
-                   (ejc/execute-request (jupyter-repl--get-client) cmd)
-                   jupyter-repl--state))))))
+          ;; send a command to the kernel, enter WAITING state
+          (let* ((header (ejc/execute-request (jupyter-repl--get-client) cmd)))
+            (puthash 'repl-state 'waiting jupyter-repl--state)
+            (setq-local jupyter-repl--waiting-for (make-hash-table))
+            (puthash 'header header jupyter-repl--waiting-for)
+            ;; The kernel will publish an execute_reply on the shell channel as
+            ;; well as execute_input and execute_result (or error) message on
+            ;; the iopub channel. We enter the response in the buffer once we
+            ;; have received all three.
+            (puthash 'reply nil jupyter-repl--waiting-for)
+            (puthash 'input nil jupyter-repl--waiting-for)
+            (puthash 'result nil jupyter-repl--waiting-for)))))
+    (goto-char (point-max))
+    (insert "\n")))
+
+(defun jupyter-repl--ready? ()
+  "Return t if the repl is not currently waiting for input."
+  (not (eq (gethash 'repl-state jupyter-repl--state) 'waiting)))
 
 (defun jupyter-repl--tab ()
   "Send a completion request to the kernel."
@@ -269,6 +338,7 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
 
 (defun jupyter-repl--insert-prompt ()
   "Insert the prompt."
+  (insert "\n")
   (insert jupyter-repl-prompt))
 
 (defun jupyter-repl--on-prompt? ()
@@ -323,9 +393,7 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
   "Generate the REPL buffer banner"
   (format "
 # This is the Jupyter REPL.
-# The rest of this banner is TODO.
-
-"))
+# The rest of this banner is TODO."))
 
 (defun jupyter-repl--init ()
   "Initialize a new Jupyter REPL."
@@ -333,6 +401,7 @@ version like uuidgen would be the Wrong Thing To Do.  Stolen from
   (jupyter-repl--start-kernel)
   (jupyter-repl--start-client)
   (insert (jupyter-repl--banner))
+  (puthash 'repl-state 'ready jupyter-repl--state)
   (jupyter-repl--insert-prompt))
 
 (defun jupyter-repl ()
